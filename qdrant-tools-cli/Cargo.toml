@@ -1,0 +1,29 @@
+[package]
+name = "qdrant-tools-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+qdrant-tools-migration = { path = "../qdrant-tools-migration" }
+qdrant-tools-macros = { path = "../qdrant-tools-macros" }
+quote = "1.0.40"
+syn = { version = "2", default-features = false, features = [
+  "full",
+  "parsing",
+] }
+proc-macro2 = "1.0.95"
+chrono = { version = "0.4.41", features = ["clock"] }
+tokio = { version = "1.45.0", features = ["fs", "macros"] }
+thiserror = "2.0.12"
+toml = "0.8.22"
+serde = { version = "1.0.219", features = ["derive"] }
+clap = { version = "4.5.38", features = ["derive", "env"] }
+prettyplease = "0.2.32"
+
+[lib]
+name = "qdrant_tools_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "qdrant-tools-cli"
+path = "src/bin/main.rs"

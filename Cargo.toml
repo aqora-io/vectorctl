@@ -1,0 +1,18 @@
+[package]
+name = "qdrant-tools"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+resolver = "2"
+members = [ "qdrant-tools-cli","qdrant-tools-macros", "qdrant-tools-migration"]
+default-members = ["qdrant-tools-macros", "qdrant-tools-migration"]
+
+
+[dependencies]
+async-trait = "0.1.88"
+qdrant-client = "1.14.0"
+qdrant-tools-macros = { path = "./qdrant-tools-macros" }
+qdrant-tools-migration = { path = "./qdrant-tools-migration" }
+sea-orm = "1.1.11"
