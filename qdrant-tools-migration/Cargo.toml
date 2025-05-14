@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+qdrant-tools-cli = { path = "../qdrant-tools-cli" }
 async-trait = "0.1.88"
 chrono = { version = "0.4.41", features = ["serde"] }
 qdrant-client = "1.14.0"
@@ -12,3 +13,4 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 thiserror = "2.0.12"
 tokio = { version = "1.45.0", features = ["fs"] }
+clap = { version = "4.5.38", features = ["derive"] }

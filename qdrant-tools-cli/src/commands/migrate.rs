@@ -24,6 +24,8 @@ pub enum MigrateCommandError {
     Parser(#[from] syn::Error),
     #[error("toml {0}")]
     Toml(String),
+    #[error("migration crate already exist")]
+    Exist,
 }
 
 #[derive(Serialize, Default)]
@@ -109,7 +111,8 @@ fn generate_migrator_file_template(
     path_ident: LitStr,
 ) -> Result<String, MigrateCommandError> {
     let tokens = quote! {
-        pub use sea_orm_migration::prelude::*;
+
+        use
 
         #( mod #mod_idents; )*
 
@@ -129,6 +132,16 @@ fn generate_migrator_file_template(
                 std::path::PathBuf::from(#path_ident)
             }
 
+        }
+    };
+    Ok(prettyplease::unparse(&parse2(tokens)?))
+}
+
+fn generate_main_file_template() -> Result<String, MigrateCommandError> {
+    let tokens = quote! {
+        #[async_std::main]
+        async fn main() {
+            cli::run_cli(migration::Migrator).await;
         }
     };
     Ok(prettyplease::unparse(&parse2(tokens)?))
@@ -169,14 +182,8 @@ fn get_full_migration_dir(migration_dir: impl AsRef<Path>) -> PathBuf {
     }
 }
 
-// https://github.com/SeaQL/sea-orm/blob/4b4af1605addc5f5edbb0bd75b03644490004373/sea-orm-cli/src/commands/migrate.rs#L202
 fn get_migrator_filepath(migration_dir: impl AsRef<Path>) -> PathBuf {
-    let full_migration_dir = get_full_migration_dir(migration_dir);
-    let with_lib = full_migration_dir.join("lib.rs");
-    match () {
-        _ if with_lib.is_file() => with_lib,
-        _ => full_migration_dir.join("mod.rs"),
-    }
+    get_full_migration_dir(migration_dir).join("lib.rs")
 }
 
 async fn create_rust_files(
@@ -192,9 +199,12 @@ async fn create_rust_files(
     let init_migration = generate_migration_file_template(&mod_ident, &db_tye_ident)?;
     write_out(migration_file, init_migration).await?;
 
-    let history_path = migration_dir.as_ref().join(HISTORY_FILE_NAME);
     let history_path_lit = LitStr::new(
-        history_path.to_str().expect("utf-8 path"),
+        migration_dir
+            .as_ref()
+            .join(HISTORY_FILE_NAME)
+            .to_str()
+            .expect("utf-8 path"),
         Span::call_site(),
     );
     let init_migrator = generate_migrator_file_template(
@@ -209,21 +219,27 @@ async fn create_rust_files(
         history_path_lit,
     )?;
 
-    write_out(get_migrator_filepath(migration_dir), init_migrator).await
+    write_out(get_migrator_filepath(path), init_migrator).await
 }
 
 pub async fn init(
     db_type: impl AsRef<str>,
     migration_dir: impl AsRef<Path>,
 ) -> Result<(), MigrateCommandError> {
-    create_cargo_toml(get_full_migration_dir(&migration_dir).join("Cargo.toml")).await?;
+    let src_path = migration_dir.as_ref().join("src");
+    let cargo_toml_path = migration_dir.as_ref().join("Cargo.toml");
+    if cargo_toml_path.exists() {
+        return Err(MigrateCommandError::Exist);
+    }
+    create_cargo_toml(cargo_toml_path).await?;
     create_rust_files(
         db_type,
-        migration_dir,
+        &src_path,
         &format!("{}_init_migration", timestamp()),
         None,
     )
-    .await
+    .await?;
+    write_out(src_path.join("main.rs"), generate_main_file_template()?).await
 }
 
 pub async fn create_new_migration(

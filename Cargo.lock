@@ -1820,14 +1820,15 @@ dependencies = [
  "clap",
  "prettyplease",
  "proc-macro2",
+ "qdrant-client",
  "qdrant-tools-macros",
- "qdrant-tools-migration",
  "quote",
  "serde",
  "syn 2.0.101",
  "thiserror 2.0.12",
  "tokio",
  "toml",
+ "url",
 ]
 
 [[package]]
@@ -1846,7 +1847,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "clap",
  "qdrant-client",
+ "qdrant-tools-cli",
  "semver",
  "serde",
  "serde_json",
@@ -3183,6 +3186,7 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]

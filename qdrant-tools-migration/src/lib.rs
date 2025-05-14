@@ -1,6 +1,7 @@
 use migrator::MigrationError;
 use qdrant_client::Qdrant;
 
+pub mod cli;
 pub mod migrator;
 
 pub fn get_file_stem(path: &str) -> &str {
