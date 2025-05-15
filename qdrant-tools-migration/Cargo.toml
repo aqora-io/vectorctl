@@ -7,10 +7,12 @@ edition = "2024"
 qdrant-tools-cli = { path = "../qdrant-tools-cli" }
 async-trait = "0.1.88"
 chrono = { version = "0.4.41", features = ["serde"] }
-qdrant-client = "1.14.0"
+qdrant-client = { version = "1.14.0", features = ["serde"] }
 semver = { version = "1.0.26", features = ["serde"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 thiserror = "2.0.12"
 tokio = { version = "1.45.0", features = ["fs"] }
 clap = { version = "4.5.38", features = ["derive"] }
+fnv = "1.0.7"
+itertools = "0.14.0"

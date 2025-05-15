@@ -15,6 +15,8 @@ pub enum CliError {
     Command(#[from] MigrateCommandError),
     #[error(transparent)]
     Qdrant(#[from] qdrant_client::QdrantError),
+    #[error(transparent)]
+    Context(#[from] crate::context::ContextError),
 }
 
 const MIGRATION_DIR: &str = "./";
@@ -43,11 +45,7 @@ pub struct Cli {
     command: Option<MigrateSubcommands>,
 }
 
-pub async fn run_migrate<M>(
-    _: M,
-    db: &M::Db,
-    command: Option<MigrateSubcommands>,
-) -> Result<(), CliError>
+pub async fn run_migrate<M>(_: M, command: Option<MigrateSubcommands>) -> Result<(), CliError>
 where
     M: MigratorTrait,
 {
@@ -58,14 +56,15 @@ where
         .expect("Environment variable 'QDRANT_URL' not set");
     let db_type = cli.db_type;
     let qdrant = Qdrant::from_url(url.as_str()).build()?;
+    let context = crate::context::Context::new(&qdrant);
 
     match command {
         Some(MigrateSubcommands::Init) => init(db_type, MIGRATION_DIR).await?,
         Some(MigrateSubcommands::Generate { migration_name }) => {
             create_new_migration(db_type, MIGRATION_DIR, &migration_name).await?
         }
-        Some(MigrateSubcommands::Up) | None => M::up(&qdrant, db).await?,
-        Some(MigrateSubcommands::Down) => M::down(&qdrant, db).await?,
+        Some(MigrateSubcommands::Up) | None => M::up(&context).await?,
+        Some(MigrateSubcommands::Down) => M::down(&context).await?,
     }
     Ok(())
 }

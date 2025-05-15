@@ -1848,6 +1848,8 @@ dependencies = [
  "async-trait",
  "chrono",
  "clap",
+ "fnv",
+ "itertools",
  "qdrant-client",
  "qdrant-tools-cli",
  "semver",

@@ -1,5 +1,7 @@
-use migrator::MigrationError;
-use qdrant_client::Qdrant;
+use chrono::{DateTime, Utc};
+use migrator::{MigrationError, MigrationId};
+
+mod context;
 
 pub mod cli;
 pub mod migrator;
@@ -12,14 +14,13 @@ pub fn get_file_stem(path: &str) -> &str {
 }
 
 pub trait MigrationName {
-    fn name(&self) -> &str;
+    fn id(&self) -> MigrationId;
+    fn applied_at(&self) -> DateTime<Utc>;
 }
 
 #[async_trait::async_trait]
 pub trait MigrationTrait: MigrationName + Send + Sync {
-    type Db: Send + Sync + 'static;
-
     fn description(&self) -> String;
-    async fn up(&self, qdrant: &Qdrant, db: &Self::Db) -> Result<(), MigrationError>;
-    async fn down(&self, qdrant: &Qdrant, db: &Self::Db) -> Result<(), MigrationError>;
+    async fn up(&self, ctx: &context::Context<'_>) -> Result<(), MigrationError>;
+    async fn down(&self, ctx: &context::Context<'_>) -> Result<(), MigrationError>;
 }
