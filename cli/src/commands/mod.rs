@@ -48,8 +48,8 @@ pub enum MigrateSubcommands {
 pub async fn run_migrate_command(
     command: Option<MigrateSubcommands>,
     migration_dir: &str,
-    _qdrant_url: &url::Url,
-    _qdrant_api_key: Option<String>,
+    _database_url: &url::Url,
+    api_key: Option<String>,
 ) -> Result<(), CliError> {
     match command {
         Some(MigrateSubcommands::Init {
@@ -63,6 +63,7 @@ pub async fn run_migrate_command(
             let subcommand = match command {
                 Some(MigrateSubcommands::Up) => "up",
                 Some(MigrateSubcommands::Down) => "down",
+                Some(MigrateSubcommands::Status) => "status",
                 _ => "up",
             };
 
@@ -73,7 +74,11 @@ pub async fn run_migrate_command(
                 format!("{migration_dir}/Cargo.toml")
             };
             // Construct the arguments that will be supplied to `cargo` command
-            let args = vec!["run", "--manifest-path", &manifest_path, "--", subcommand];
+            let mut args = vec!["run", "--manifest-path", &manifest_path, "--", subcommand];
+
+            if let Some(api_key) = api_key.as_ref() {
+                args.extend(["-k", api_key]);
+            }
 
             // Run migrator CLI on user's behalf
             println!("Running `cargo {}`", args.join(" "));

@@ -30,19 +30,19 @@ pub enum Commands {
         #[arg(
             short = 'u',
             long,
-            help = "Qdrant database url",
-            env = "QDRANT_URL",
+            help = "database url",
+            env = "DATABASE_URL",
             default_value = "http://localhost:6334"
         )]
-        qdrant_url: url::Url,
+        database_url: url::Url,
 
         #[arg(
             short = 'k',
             long,
-            help = "Qdrant api key",
+            help = "database api key",
             env = "QDRANT__SERVICE__API_KEY"
         )]
-        qdrant_api_key: Option<String>,
+        api_key: Option<String>,
 
         #[command(subcommand)]
         command: Option<MigrateSubcommands>,
@@ -62,14 +62,14 @@ pub async fn main() -> Result<(), CliError> {
         Commands::Migrate {
             migration_dir,
             command,
-            qdrant_url,
-            qdrant_api_key,
+            database_url,
+            api_key,
         } => {
             run_migrate_command(
                 command,
                 migration_dir.to_string_lossy().to_string().as_str(),
-                &qdrant_url,
-                qdrant_api_key,
+                &database_url,
+                api_key,
             )
             .await?
         }

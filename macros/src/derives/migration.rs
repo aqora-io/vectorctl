@@ -1,15 +1,15 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-struct DeriveMigrationName {
+struct DeriveMigrationMeta {
     ident: syn::Ident,
 }
 
-impl DeriveMigrationName {
+impl DeriveMigrationMeta {
     fn new(input: syn::DeriveInput) -> Self {
         let ident = input.ident;
 
-        DeriveMigrationName { ident }
+        DeriveMigrationMeta { ident }
     }
 
     fn expand(&self) -> TokenStream {
@@ -17,9 +17,9 @@ impl DeriveMigrationName {
 
         quote!(
             #[automatically_derived]
-            impl qdrant_tools_migration::MigrationMeta for #ident {
-                fn id(&self) -> qdrant_tools_migration::migrator::MigrationId {
-                    qdrant_tools_migration::get_file_stem(file!()).into()
+            impl migration::MigrationMeta for #ident {
+                fn id(&self) -> migration::migrator::MigrationId {
+                    migration::get_file_stem(file!()).into()
                 }
 
                 fn message(&self) -> String {
@@ -30,7 +30,6 @@ impl DeriveMigrationName {
     }
 }
 
-/// Method to derive a MigrationName
-pub fn expand_derive_migration_name(input: syn::DeriveInput) -> syn::Result<TokenStream> {
-    Ok(DeriveMigrationName::new(input).expand())
+pub fn expand_derive_migration_meta(input: syn::DeriveInput) -> syn::Result<TokenStream> {
+    Ok(DeriveMigrationMeta::new(input).expand())
 }

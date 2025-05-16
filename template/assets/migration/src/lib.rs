@@ -1,5 +1,5 @@
-use qdrant_tools_migration::MigrationTrait;
-pub use qdrant_tools_migration::migrator::MigratorTrait;
+use migration::MigrationTrait;
+pub use migration::migrator::MigratorTrait;
 mod version_20250101_011111_init_migration;
 
 pub struct Migrator;

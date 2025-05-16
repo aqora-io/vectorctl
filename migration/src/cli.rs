@@ -26,12 +26,13 @@ const MIGRATION_DIR: &str = "./";
 pub struct Cli {
     #[arg(
         global = true,
-        short = 'q',
+        short = 'u',
         long,
-        env = "QDRANT_URL",
-        help = "Qdrant URL"
+        env = "DATABASE_URL",
+        help = "Database URL",
+        default_value = "http://localhost:6334"
     )]
-    qdrant_url: Option<String>,
+    database_url: Option<String>,
 
     #[command(subcommand)]
     command: Option<MigrateSubcommands>,
@@ -43,11 +44,11 @@ where
 {
     let cli = Cli::parse();
 
-    let url = cli
-        .qdrant_url
-        .expect("Environment variable 'QDRANT_URL' not set");
+    let database_url = cli
+        .database_url
+        .expect("Environment variable 'DATABASE_URL' not set");
 
-    let qdrant = Qdrant::from_url(url.as_str()).build()?;
+    let qdrant = Qdrant::from_url(database_url.as_str()).build()?;
     let context = crate::context::Context::new(&qdrant);
 
     match cli.command {
