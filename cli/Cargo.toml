@@ -1,10 +1,10 @@
 [package]
-name = "qdrant-tools-cli"
+name = "cli"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-qdrant-tools-macros = { path = "../qdrant-tools-macros" }
+macros = { path = "../macros" }
 template = { path = "../template" }
 quote = "1.0.40"
 syn = { version = "2", default-features = false, features = [
@@ -27,5 +27,5 @@ name = "qdrant_tools_cli"
 path = "src/lib.rs"
 
 [[bin]]
-name = "qdrant-tools-cli"
+name = "cli"
 path = "src/bin/main.rs"

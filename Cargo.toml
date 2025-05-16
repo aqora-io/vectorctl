@@ -7,17 +7,17 @@ edition = "2024"
 
 resolver = "2"
 members = [
-  "qdrant-tools-cli",
-  "qdrant-tools-macros",
-  "qdrant-tools-migration",
+  "cli",
+  "macros",
+  "migration",
   "template",
 ]
-default-members = ["qdrant-tools-macros", "qdrant-tools-migration", "template"]
+default-members = ["macros", "migration", "template"]
 
 
 [dependencies]
 async-trait = "0.1.88"
 qdrant-client = "1.14.0"
-qdrant-tools-macros = { path = "./qdrant-tools-macros" }
-qdrant-tools-migration = { path = "./qdrant-tools-migration" }
+macros = { path = "./macros" }
+migration = { path = "./migration" }
 sea-orm = "1.1.11"
