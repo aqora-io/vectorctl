@@ -1,10 +1,10 @@
 use chrono::{DateTime, Utc};
-use itertools::Itertools;
 use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
-        CreateCollectionBuilder, DeletePointsBuilder, PointId, PointStruct, PointsIdsList,
-        ScrollPointsBuilder, UpsertPointsBuilder, point_id::PointIdOptions,
+        CreateCollectionBuilder, DeletePointsBuilder, Distance, PointId, PointStruct,
+        PointsIdsList, ScrollPointsBuilder, UpsertPointsBuilder, VectorParamsBuilder,
+        point_id::PointIdOptions,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -15,8 +15,6 @@ use std::{
 use thiserror::Error;
 
 use crate::MigrationTrait;
-
-const LEDGER_COLLECTION: &str = "_qdrant_migration";
 
 #[repr(transparent)]
 #[derive(Clone, Hash, Eq, PartialEq, Debug, Deserialize, Serialize)]
@@ -50,7 +48,7 @@ pub enum MigrationError {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MigrationRecord {
-    id: MigrationId,
+    name: MigrationId,
     applied_at: DateTime<Utc>,
 }
 
@@ -68,11 +66,11 @@ impl TryFrom<HashMap<String, qdrant_client::qdrant::Value>> for MigrationRecord 
 impl MigrationRecord {
     fn try_into_point(self) -> Result<PointStruct, MigrationError> {
         Ok(PointStruct::new(
-            self.id.to_string(),
-            vec![0.0],
+            uuid::Uuid::now_v7().to_string(),
+            vec![0.0_f32; 1],
             Payload::try_from(serde_json::json!({
-                "id": self.id.to_string(),
-                "applied_at": self.applied_at.timestamp(),
+                "name": self.name.to_string(),
+                "applied_at": self.applied_at,
             }))?,
         ))
     }
@@ -80,6 +78,8 @@ impl MigrationRecord {
 
 #[async_trait::async_trait]
 pub trait LedgerTrait {
+    const LEDGER_COLLECTION: &'static str;
+
     async fn ensure(&self) -> Result<(), MigrationError>;
     async fn retrieve(&self) -> Result<HashSet<MigrationId>, MigrationError>;
     async fn insert_many(&self, ids: Vec<MigrationId>) -> Result<(), MigrationError>;
@@ -98,12 +98,22 @@ impl<'a> Ledger<'a> {
 
 #[async_trait::async_trait]
 impl LedgerTrait for Ledger<'_> {
+    const LEDGER_COLLECTION: &'static str = "_qdrant_migration";
+
     async fn ensure(&self) -> Result<(), MigrationError> {
-        if self.client.collection_exists(LEDGER_COLLECTION).await? {
+        if self
+            .client
+            .collection_exists(Self::LEDGER_COLLECTION)
+            .await?
+        {
             return Ok(());
         }
         self.client
-            .create_collection(CreateCollectionBuilder::new(LEDGER_COLLECTION).build())
+            .create_collection(
+                CreateCollectionBuilder::new(Self::LEDGER_COLLECTION)
+                    .vectors_config(VectorParamsBuilder::new(1, Distance::Cosine))
+                    .build(),
+            )
             .await?;
         Ok(())
     }
@@ -111,14 +121,14 @@ impl LedgerTrait for Ledger<'_> {
     async fn retrieve(&self) -> Result<HashSet<MigrationId>, MigrationError> {
         self.client
             .scroll(
-                ScrollPointsBuilder::new(LEDGER_COLLECTION)
+                ScrollPointsBuilder::new(Self::LEDGER_COLLECTION)
                     .with_payload(true)
                     .with_vectors(false),
             )
             .await?
             .result
             .into_iter()
-            .map(|item| Ok(MigrationRecord::try_from(item.payload)?.id))
+            .map(|item| Ok(MigrationRecord::try_from(item.payload)?.name))
             .collect()
     }
 
@@ -129,7 +139,7 @@ impl LedgerTrait for Ledger<'_> {
             .into_iter()
             .map(|id| {
                 MigrationRecord {
-                    id,
+                    name: id,
                     applied_at: now,
                 }
                 .try_into_point()
@@ -137,7 +147,7 @@ impl LedgerTrait for Ledger<'_> {
             .collect::<Result<Vec<_>, _>>()?;
 
         self.client
-            .upsert_points(UpsertPointsBuilder::new(LEDGER_COLLECTION, points).wait(true))
+            .upsert_points(UpsertPointsBuilder::new(Self::LEDGER_COLLECTION, points).wait(true))
             .await?;
 
         Ok(())
@@ -146,7 +156,7 @@ impl LedgerTrait for Ledger<'_> {
     async fn delete(&self, id: MigrationId) -> Result<(), MigrationError> {
         self.client
             .delete_points(
-                DeletePointsBuilder::new(LEDGER_COLLECTION)
+                DeletePointsBuilder::new(Self::LEDGER_COLLECTION)
                     .points(PointsIdsList {
                         ids: vec![PointId {
                             point_id_options: Some(PointIdOptions::Uuid(id.to_string())),
@@ -200,7 +210,6 @@ pub trait MigratorTrait: Send {
                 };
                 Migration { migration, status }
             })
-            .sorted_by(|a, b| a.migration.applied_at().cmp(&b.migration.applied_at()))
             .collect())
     }
 
@@ -215,8 +224,8 @@ pub trait MigratorTrait: Send {
             .collect())
     }
 
-    async fn status(qdrant: &Qdrant) -> Result<(), MigrationError> {
-        Self::migrations_with_status(qdrant)
+    async fn status(ctx: &crate::context::Context<'_>) -> Result<(), MigrationError> {
+        Self::migrations_with_status(ctx.qdrant)
             .await?
             .into_iter()
             .for_each(|migration| {
@@ -253,17 +262,20 @@ where
 {
     let qdrant = ctx.qdrant;
     let ledger = Ledger::new(qdrant);
+    ledger.ensure().await?;
     let mut migration_ids: Vec<MigrationId> = Vec::new();
     for migration in M::migrations_by_status(MigrationStatus::Pending, qdrant).await? {
         migration.migration.up(ctx).await?;
         println!(
             "applying {}, {}",
             migration.migration.id(),
-            migration.migration.description()
+            migration.migration.message()
         );
         migration_ids.push(migration.migration.id());
     }
-    ledger.insert_many(migration_ids).await?;
+    if !migration_ids.is_empty() {
+        ledger.insert_many(migration_ids).await?;
+    }
     Ok(())
 }
 

@@ -1,0 +1,7 @@
+use macro_rules_attribute::apply;
+use smol_macros::main;
+
+#[apply(main!)]
+async fn main() -> Result<(), qdrant_tools_migration::cli::CliError> {
+    qdrant_tools_migration::cli::run_migrate({{package_name}}::Migrator).await
+}

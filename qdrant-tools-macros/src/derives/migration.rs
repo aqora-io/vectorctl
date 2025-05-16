@@ -17,9 +17,13 @@ impl DeriveMigrationName {
 
         quote!(
             #[automatically_derived]
-            impl qdrant_tools_migration::MigrationName for #ident {
-                fn name(&self) -> &str {
-                    qdrant_tools_migration::get_file_stem(file!())
+            impl qdrant_tools_migration::MigrationMeta for #ident {
+                fn id(&self) -> qdrant_tools_migration::migrator::MigrationId {
+                    qdrant_tools_migration::get_file_stem(file!()).into()
+                }
+
+                fn message(&self) -> String {
+                    file!().to_string()
                 }
             }
         )

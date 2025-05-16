@@ -1,7 +1,7 @@
 mod migrate;
 
 use clap::{Subcommand, command};
-use std::path::Path;
+use std::process::{self};
 
 pub use migrate::{MigrateCommandError, create_new_migration, init};
 
@@ -18,7 +18,20 @@ fn parse_migration_name(raw: &str) -> Result<String, String> {
 #[derive(Subcommand, PartialEq, Eq, Debug)]
 pub enum MigrateSubcommands {
     #[command(about = "Initialize migration directory")]
-    Init,
+    Init {
+        #[arg(
+            required = false,
+            long,
+            help = "set a package name for the generated template"
+        )]
+        package_name: Option<String>,
+        #[arg(
+            required = false,
+            long,
+            help = "set rust edition for the generated template"
+        )]
+        rust_edition: Option<String>,
+    },
     #[command(about = "Generate new migration")]
     Generate {
         #[arg(required = true, value_parser = parse_migration_name)]
@@ -28,24 +41,51 @@ pub enum MigrateSubcommands {
     Up,
     #[command(about = "Running up migratiosn")]
     Down,
+    #[command(about = "Get migration status")]
+    Status,
 }
 
 pub async fn run_migrate_command(
     command: Option<MigrateSubcommands>,
-    migration_dir: impl AsRef<Path>,
-    db_type: &str,
+    migration_dir: &str,
     _qdrant_url: &url::Url,
     _qdrant_api_key: Option<String>,
 ) -> Result<(), CliError> {
     match command {
-        Some(MigrateSubcommands::Init) | None => migrate::init(db_type, migration_dir).await?,
+        Some(MigrateSubcommands::Init {
+            package_name,
+            rust_edition,
+        }) => migrate::init(package_name, rust_edition, migration_dir).await?,
         Some(MigrateSubcommands::Generate { migration_name }) => {
-            migrate::create_new_migration(db_type, migration_dir, &migration_name).await?
+            migrate::create_new_migration(migration_dir, &migration_name).await?
         }
-        Some(MigrateSubcommands::Up) => {
-            print!("TODO: trigger `cargo run ...` with the cli defined in the migration crate")
+        _ => {
+            let subcommand = match command {
+                Some(MigrateSubcommands::Up) => "up",
+                Some(MigrateSubcommands::Down) => "down",
+                _ => "up",
+            };
+
+            // Construct the `--manifest-path`
+            let manifest_path = if migration_dir.ends_with('/') {
+                format!("{migration_dir}Cargo.toml")
+            } else {
+                format!("{migration_dir}/Cargo.toml")
+            };
+            // Construct the arguments that will be supplied to `cargo` command
+            let args = vec!["run", "--manifest-path", &manifest_path, "--", subcommand];
+
+            // Run migrator CLI on user's behalf
+            println!("Running `cargo {}`", args.join(" "));
+            let exit_status = process::Command::new("cargo")
+                .args(args)
+                .status()
+                .map_err(|err| CliError::Custom(err.to_string()))?;
+            if !exit_status.success() {
+                // Propagate the error if any
+                return Err(CliError::Custom("naa".into()));
+            }
         }
-        Some(MigrateSubcommands::Down) => println!("Up"),
     }
 
     Ok(())

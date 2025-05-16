@@ -6,8 +6,13 @@ edition = "2024"
 [workspace]
 
 resolver = "2"
-members = [ "qdrant-tools-cli","qdrant-tools-macros", "qdrant-tools-migration"]
-default-members = ["qdrant-tools-macros", "qdrant-tools-migration"]
+members = [
+  "qdrant-tools-cli",
+  "qdrant-tools-macros",
+  "qdrant-tools-migration",
+  "template",
+]
+default-members = ["qdrant-tools-macros", "qdrant-tools-migration", "template"]
 
 
 [dependencies]

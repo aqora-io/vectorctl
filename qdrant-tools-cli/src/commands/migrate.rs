@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     iter::once,
     path::{Path, PathBuf},
 };
@@ -7,14 +6,12 @@ use std::{
 use chrono::Utc;
 use proc_macro2::Span;
 use quote::quote;
-use serde::Serialize;
-use syn::{Ident, Item, ItemMod, LitStr, parse_file, parse2};
+use syn::{Ident, Item, ItemMod, parse_file, parse2};
+use template::MigrationTemplate;
 use thiserror::Error;
 use tokio::fs;
-use toml::Value;
 
 const MIGRATION_FILE_PREFIX: &str = "version";
-const HISTORY_FILE_NAME: &str = "history.json";
 
 #[derive(Debug, Error)]
 pub enum MigrateCommandError {
@@ -26,43 +23,8 @@ pub enum MigrateCommandError {
     Toml(String),
     #[error("migration crate already exist")]
     Exist,
-}
-
-#[derive(Serialize, Default)]
-struct Package {
-    name: String,
-    version: String,
-    edition: String,
-}
-
-#[derive(Serialize)]
-struct CargoToml {
-    package: Package,
-    dependencies: BTreeMap<String, toml::Value>,
-}
-
-async fn create_cargo_toml(path: impl AsRef<Path>) -> Result<(), MigrateCommandError> {
-    let pkg = Package {
-        name: "migration".into(),
-        version: "0.1.0".into(),
-        edition: "2021".into(),
-    };
-
-    let mut deps = BTreeMap::new();
-    deps.insert("async-trait".into(), Value::from("0.1.88"));
-
-    let doc = CargoToml {
-        package: pkg,
-        dependencies: deps,
-    };
-
-    fs::write(
-        path,
-        toml::to_string(&doc).map_err(|err| MigrateCommandError::Toml(err.to_string()))?,
-    )
-    .await?;
-
-    Ok(())
+    #[error("{0}")]
+    Custom(String),
 }
 
 fn timestamp() -> String {
@@ -73,46 +35,25 @@ fn timestamp() -> String {
     )
 }
 
-fn generate_migration_file_template(
-    mod_ident: &Ident,
-    db_type: &syn::Path,
-) -> Result<String, MigrateCommandError> {
-    let description = format!("description for {} migration", mod_ident);
-    let tokens = quote! {
-        use qdrant_tools_macro::DeriveMigrationName;
-        use qdrant_tools_migration::{MigrationTrait, migrator::{MigrationError}};
+async fn create_migration_file_template(
+    migration_dir: impl AsRef<Path>,
+    filename: &str,
+) -> Result<(), MigrateCommandError> {
+    let path = migration_dir.as_ref();
+    // file defined in template/assets/migration/src
+    fs::copy(
+        path.join("version_20250101_011111_init_migration.rs"),
+        path.join(format!("{}.rs", filename)),
+    )
+    .await?;
 
-        #[derive(DeriveMigrationName)]
-            pub struct Migration;
-
-            #[async_trait::async_trait]
-            impl MigrationTrait for Migration {
-                type Db = #db_type;
-
-                fn description(&self) -> String {
-                    #description.into()
-                }
-
-                async fn up(&self, qdrant: &Qdrant, _db: &Self::Db) -> Result<(), MigrationError> {
-                    todo!();
-                }
-
-                async fn down(&self, qdrant: &Qdrant, _db: &Self::Db) -> Result<(), MigrationError> {
-                    todo!();
-                }
-        }
-    };
-    Ok(prettyplease::unparse(&parse2(tokens)?))
+    Ok(())
 }
 
-fn generate_migrator_file_template(
-    mod_idents: Vec<Ident>,
-    db_type: &syn::Path,
-    path_ident: LitStr,
-) -> Result<String, MigrateCommandError> {
+fn generate_migrator_file_template(mod_idents: Vec<Ident>) -> Result<String, MigrateCommandError> {
     let tokens = quote! {
-
-        use
+        pub use qdrant_tools_migration::migrator::MigratorTrait;
+        use qdrant_tools_migration::MigrationTrait;
 
         #( mod #mod_idents; )*
 
@@ -120,28 +61,12 @@ fn generate_migrator_file_template(
 
         #[async_trait::async_trait]
         impl MigratorTrait for Migrator {
-             type Db = #db_type;
-
-             fn migrations() -> Vec<Box<dyn MigrationTrait<Db = Self::Db>>> {
+             fn migrations() -> Vec<Box<dyn MigrationTrait>> {
                 vec![
                     #( Box::new(#mod_idents::Migration) ),*
                 ]
             }
 
-            fn history_path() -> std::path::PathBuf {
-                std::path::PathBuf::from(#path_ident)
-            }
-
-        }
-    };
-    Ok(prettyplease::unparse(&parse2(tokens)?))
-}
-
-fn generate_main_file_template() -> Result<String, MigrateCommandError> {
-    let tokens = quote! {
-        #[async_std::main]
-        async fn main() {
-            cli::run_cli(migration::Migrator).await;
         }
     };
     Ok(prettyplease::unparse(&parse2(tokens)?))
@@ -187,63 +112,45 @@ fn get_migrator_filepath(migration_dir: impl AsRef<Path>) -> PathBuf {
 }
 
 async fn create_rust_files(
-    db_type: impl AsRef<str>,
     migration_dir: impl AsRef<Path>,
     mod_name: &str,
     idents: Option<Vec<Ident>>,
 ) -> Result<(), MigrateCommandError> {
     let path = get_full_migration_dir(&migration_dir);
-    let migration_file = path.join(format!("{}.rs", mod_name));
-    let db_tye_ident = syn::parse_str::<syn::Path>(db_type.as_ref())?;
     let mod_ident = Ident::new(mod_name, Span::call_site());
-    let init_migration = generate_migration_file_template(&mod_ident, &db_tye_ident)?;
-    write_out(migration_file, init_migration).await?;
+    create_migration_file_template(&path, mod_name).await?;
 
-    let history_path_lit = LitStr::new(
-        migration_dir
-            .as_ref()
-            .join(HISTORY_FILE_NAME)
-            .to_str()
-            .expect("utf-8 path"),
-        Span::call_site(),
-    );
-    let init_migrator = generate_migrator_file_template(
-        match idents {
-            Some(idents) => idents
-                .into_iter()
-                .chain(once(mod_ident))
-                .collect::<Vec<_>>(),
-            None => once(mod_ident).collect::<Vec<_>>(),
-        },
-        &db_tye_ident,
-        history_path_lit,
-    )?;
+    let init_migrator = generate_migrator_file_template(match idents {
+        Some(idents) => idents
+            .into_iter()
+            .chain(once(mod_ident))
+            .collect::<Vec<_>>(),
+        None => once(mod_ident).collect::<Vec<_>>(),
+    })?;
 
     write_out(get_migrator_filepath(path), init_migrator).await
 }
 
 pub async fn init(
-    db_type: impl AsRef<str>,
+    package_name: Option<String>,
+    rust_edition: Option<String>,
     migration_dir: impl AsRef<Path>,
 ) -> Result<(), MigrateCommandError> {
-    let src_path = migration_dir.as_ref().join("src");
-    let cargo_toml_path = migration_dir.as_ref().join("Cargo.toml");
-    if cargo_toml_path.exists() {
-        return Err(MigrateCommandError::Exist);
+    let mut builder = MigrationTemplate::builder();
+    if let Some(package_name) = package_name.as_ref() {
+        builder.package_name(package_name);
     }
-    create_cargo_toml(cargo_toml_path).await?;
-    create_rust_files(
-        db_type,
-        &src_path,
-        &format!("{}_init_migration", timestamp()),
-        None,
-    )
-    .await?;
-    write_out(src_path.join("main.rs"), generate_main_file_template()?).await
+    if let Some(rust_edition) = rust_edition.as_ref() {
+        builder.rust_edition(rust_edition);
+    }
+    builder
+        .render(migration_dir)
+        .map_err(|err| MigrateCommandError::Custom(err.to_string()))?;
+
+    Ok(())
 }
 
 pub async fn create_new_migration(
-    db_type: impl AsRef<str>,
     migration_dir: impl AsRef<Path>,
     migration_name: &str,
 ) -> Result<(), MigrateCommandError> {
@@ -252,7 +159,6 @@ pub async fn create_new_migration(
     fs::copy(&migrator_filepath, &migrator_backup_filepath).await?;
 
     create_rust_files(
-        db_type,
         migration_dir,
         &format!("{}_{}", timestamp(), migration_name),
         Some(get_mods(&migrator_filepath).await?),

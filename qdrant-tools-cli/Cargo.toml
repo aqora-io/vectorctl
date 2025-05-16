@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 qdrant-tools-macros = { path = "../qdrant-tools-macros" }
+template = { path = "../template" }
 quote = "1.0.40"
 syn = { version = "2", default-features = false, features = [
   "full",

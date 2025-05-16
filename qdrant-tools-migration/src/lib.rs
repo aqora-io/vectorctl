@@ -1,9 +1,7 @@
-use chrono::{DateTime, Utc};
 use migrator::{MigrationError, MigrationId};
 
-mod context;
-
 pub mod cli;
+pub mod context;
 pub mod migrator;
 
 pub fn get_file_stem(path: &str) -> &str {
@@ -13,14 +11,13 @@ pub fn get_file_stem(path: &str) -> &str {
         .unwrap()
 }
 
-pub trait MigrationName {
+pub trait MigrationMeta {
     fn id(&self) -> MigrationId;
-    fn applied_at(&self) -> DateTime<Utc>;
+    fn message(&self) -> String;
 }
 
 #[async_trait::async_trait]
-pub trait MigrationTrait: MigrationName + Send + Sync {
-    fn description(&self) -> String;
+pub trait MigrationTrait: MigrationMeta + Send + Sync {
     async fn up(&self, ctx: &context::Context<'_>) -> Result<(), MigrationError>;
     async fn down(&self, ctx: &context::Context<'_>) -> Result<(), MigrationError>;
 }

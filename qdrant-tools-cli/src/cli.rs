@@ -10,6 +10,8 @@ pub enum CliError {
     Qdrant(#[from] qdrant_client::QdrantError),
     #[error(transparent)]
     Migrate(#[from] crate::commands::MigrateCommandError),
+    #[error("custom: {0}")]
+    Custom(String),
 }
 
 #[derive(Subcommand, PartialEq, Eq, Debug)]
@@ -24,14 +26,6 @@ pub enum Commands {
             default_value = "./migration"
         )]
         migration_dir: PathBuf,
-
-        #[arg(
-            short = 't',
-            long,
-            help = "Database type",
-            default_value = "sea_orm::DbConn"
-        )]
-        db_type: String,
 
         #[arg(
             short = 'u',
@@ -67,15 +61,13 @@ pub async fn main() -> Result<(), CliError> {
     match cli.command {
         Commands::Migrate {
             migration_dir,
-            db_type,
             command,
             qdrant_url,
             qdrant_api_key,
         } => {
             run_migrate_command(
                 command,
-                migration_dir,
-                &db_type,
+                migration_dir.to_string_lossy().to_string().as_str(),
                 &qdrant_url,
                 qdrant_api_key,
             )
