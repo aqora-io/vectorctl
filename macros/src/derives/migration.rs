@@ -17,13 +17,13 @@ impl DeriveMigrationMeta {
 
         quote!(
             #[automatically_derived]
-            impl migration::MigrationMeta for #ident {
-                fn id(&self) -> migration::migrator::MigrationId {
-                    migration::get_file_stem(file!()).into()
+            impl vectorctl::MigrationMeta for #ident {
+                fn name(&self) -> vectorctl::MigrationName {
+                    vectorctl::get_file_stem(file!()).into()
                 }
 
-                fn message(&self) -> String {
-                    file!().to_string()
+                fn revision(&self) -> vectorctl::Revision {
+                    REVISION
                 }
             }
         )

@@ -1,4 +1,10 @@
+use crate::{
+    MigrationTrait,
+    revision::{RevisionGraph, RevisionGraphError},
+};
 use chrono::{DateTime, Utc};
+use futures::future::join_all;
+use once_cell::sync::OnceCell;
 use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
@@ -8,25 +14,23 @@ use qdrant_client::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-};
+use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
+use uuid::Uuid;
 
-use crate::MigrationTrait;
+static GRAPH: OnceCell<RevisionGraph> = OnceCell::new();
 
 #[repr(transparent)]
 #[derive(Clone, Hash, Eq, PartialEq, Debug, Deserialize, Serialize)]
-pub struct MigrationId(Cow<'static, str>);
+pub struct MigrationName(Cow<'static, str>);
 
-impl From<&'static str> for MigrationId {
+impl From<&'static str> for MigrationName {
     fn from(s: &'static str) -> Self {
         Self(Cow::Borrowed(s))
     }
 }
 
-impl std::fmt::Display for MigrationId {
+impl std::fmt::Display for MigrationName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
@@ -40,30 +44,31 @@ pub enum MigrationError {
     Serde(#[from] serde_json::Error),
     #[error(transparent)]
     Qdrant(#[from] qdrant_client::QdrantError),
+    #[error(transparent)]
+    Graph(#[from] RevisionGraphError),
     #[error("migration {0} missing in file‑system")]
-    Missing(MigrationId),
+    Missing(MigrationName),
     #[error("payload field {0} absent")]
     PayloadMissing(&'static str),
+    #[error(transparent)]
+    Uuid(#[from] uuid::Error),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MigrationRecord {
-    name: MigrationId,
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct MigrationPayload {
+    name: MigrationName,
     applied_at: DateTime<Utc>,
 }
 
-impl TryFrom<HashMap<String, qdrant_client::qdrant::Value>> for MigrationRecord {
+impl TryFrom<HashMap<String, qdrant_client::qdrant::Value>> for MigrationPayload {
     type Error = serde_json::Error;
 
-    fn try_from(
-        payload: HashMap<String, qdrant_client::qdrant::Value>,
-    ) -> Result<Self, Self::Error> {
-        let json_value = serde_json::to_value(payload)?;
-        serde_json::from_value(json_value)
+    fn try_from(v: HashMap<String, qdrant_client::qdrant::Value>) -> Result<Self, Self::Error> {
+        serde_json::from_value(serde_json::to_value(v)?)
     }
 }
 
-impl MigrationRecord {
+impl MigrationPayload {
     fn try_into_point(self) -> Result<PointStruct, MigrationError> {
         Ok(PointStruct::new(
             uuid::Uuid::now_v7().to_string(),
@@ -81,9 +86,9 @@ pub trait LedgerTrait {
     const LEDGER_COLLECTION: &'static str;
 
     async fn ensure(&self) -> Result<(), MigrationError>;
-    async fn retrieve(&self) -> Result<HashSet<MigrationId>, MigrationError>;
-    async fn insert_many(&self, ids: Vec<MigrationId>) -> Result<(), MigrationError>;
-    async fn delete(&self, id: MigrationId) -> Result<(), MigrationError>;
+    async fn retrieve(&self) -> Result<HashMap<MigrationName, Uuid>, MigrationError>;
+    async fn insert_many(&self, ids: Vec<MigrationName>) -> Result<(), MigrationError>;
+    async fn delete_many(&self, ids: Vec<Uuid>) -> Result<(), MigrationError>;
 }
 
 pub struct Ledger<'a> {
@@ -118,8 +123,9 @@ impl LedgerTrait for Ledger<'_> {
         Ok(())
     }
 
-    async fn retrieve(&self) -> Result<HashSet<MigrationId>, MigrationError> {
-        self.client
+    async fn retrieve(&self) -> Result<HashMap<MigrationName, Uuid>, MigrationError> {
+        Ok(self
+            .client
             .scroll(
                 ScrollPointsBuilder::new(Self::LEDGER_COLLECTION)
                     .with_payload(true)
@@ -128,19 +134,27 @@ impl LedgerTrait for Ledger<'_> {
             .await?
             .result
             .into_iter()
-            .map(|item| Ok(MigrationRecord::try_from(item.payload)?.name))
-            .collect()
+            .filter_map(|item| {
+                let id = item.id.and_then(|id| id.point_id_options);
+                let uuid = match id? {
+                    PointIdOptions::Num(_) => return None,
+                    PointIdOptions::Uuid(uuid) => Uuid::try_parse(uuid.as_ref())
+                        .map_err(MigrationError::Uuid)
+                        .ok()?,
+                };
+                MigrationPayload::try_from(item.payload)
+                    .ok()
+                    .map(|payload| (payload.name, uuid))
+            })
+            .collect())
     }
-
-    async fn insert_many(&self, ids: Vec<MigrationId>) -> Result<(), MigrationError> {
-        let now = Utc::now();
-
+    async fn insert_many(&self, ids: Vec<MigrationName>) -> Result<(), MigrationError> {
         let points: Vec<_> = ids
             .into_iter()
             .map(|id| {
-                MigrationRecord {
+                MigrationPayload {
                     name: id,
-                    applied_at: now,
+                    applied_at: Utc::now(),
                 }
                 .try_into_point()
             })
@@ -153,24 +167,24 @@ impl LedgerTrait for Ledger<'_> {
         Ok(())
     }
 
-    async fn delete(&self, id: MigrationId) -> Result<(), MigrationError> {
+    async fn delete_many(&self, ids: Vec<Uuid>) -> Result<(), MigrationError> {
         self.client
             .delete_points(
                 DeletePointsBuilder::new(Self::LEDGER_COLLECTION)
                     .points(PointsIdsList {
-                        ids: vec![PointId {
-                            point_id_options: Some(PointIdOptions::Uuid(id.to_string())),
-                        }],
+                        ids: ids
+                            .into_iter()
+                            .map(|id| PointId::from(id.to_string()))
+                            .collect(),
                     })
-                    .wait(true),
+                    .build(),
             )
             .await?;
-
         Ok(())
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MigrationStatus {
     Pending,
     Applied,
@@ -190,7 +204,8 @@ impl std::fmt::Display for MigrationStatus {
 }
 
 pub struct Migration {
-    migration: Box<dyn MigrationTrait>,
+    pub migration: Box<dyn MigrationTrait>,
+    pub id: Option<Uuid>,
     status: MigrationStatus,
 }
 
@@ -198,29 +213,29 @@ pub struct Migration {
 pub trait MigratorTrait: Send {
     fn migrations() -> Vec<Box<dyn MigrationTrait>>;
 
+    fn revision_graph(
+        migrations: Vec<Migration>,
+    ) -> Result<&'static RevisionGraph, MigrationError> {
+        Ok(GRAPH.get_or_try_init(|| RevisionGraph::try_from(migrations))?)
+    }
+
     async fn migrations_with_status(qdrant: &Qdrant) -> Result<Vec<Migration>, MigrationError> {
         let applied = Ledger::new(qdrant).retrieve().await?;
         Ok(Self::migrations()
             .into_iter()
             .map(|migration| {
-                let status = if applied.contains(&migration.id()) {
+                let migration_name = migration.name();
+                let status = if applied.contains_key(&migration_name) {
                     MigrationStatus::Applied
                 } else {
                     MigrationStatus::Pending
                 };
-                Migration { migration, status }
+                Migration {
+                    migration,
+                    status,
+                    id: applied.get(&migration_name).map(|id| id.to_owned()),
+                }
             })
-            .collect())
-    }
-
-    async fn migrations_by_status(
-        status: MigrationStatus,
-        qdrant: &Qdrant,
-    ) -> Result<Vec<Migration>, MigrationError> {
-        Ok(Self::migrations_with_status(qdrant)
-            .await?
-            .into_iter()
-            .filter(|file| file.status == status)
             .collect())
     }
 
@@ -231,67 +246,124 @@ pub trait MigratorTrait: Send {
             .for_each(|migration| {
                 println!(
                     "Migration `{}`, status : `{}`",
-                    migration.migration.id(),
+                    migration.migration.name(),
                     migration.status
                 )
             });
         Ok(())
     }
 
+    fn latest_revision() -> Result<Box<dyn MigrationTrait>, MigrationError> {
+        Ok(Self::migrations()
+            .into_iter()
+            .max_by_key(|migration| migration.revision().date.to_owned())
+            .expect("At this point we should at least have one migration"))
+    }
+
     async fn refresh(ctx: &crate::context::Context<'_>) -> Result<(), MigrationError> {
-        exec_down::<Self>(ctx).await?;
-        exec_up::<Self>(ctx).await
+        exec_down::<Self>(ctx, None).await?;
+        exec_up::<Self>(ctx, None, None).await
     }
 
     async fn reset(ctx: &crate::context::Context<'_>) -> Result<(), MigrationError> {
-        exec_down::<Self>(ctx).await
+        exec_down::<Self>(ctx, None).await
     }
 
-    async fn up(ctx: &crate::context::Context<'_>) -> Result<(), MigrationError> {
-        exec_up::<Self>(ctx).await
+    async fn up(
+        ctx: &crate::context::Context<'_>,
+        to: Option<String>,
+    ) -> Result<(), MigrationError> {
+        exec_up::<Self>(ctx, None, to.as_deref()).await
     }
 
-    async fn down(ctx: &crate::context::Context<'_>) -> Result<(), MigrationError> {
-        exec_down::<Self>(ctx).await
+    async fn down(
+        ctx: &crate::context::Context<'_>,
+        to: Option<String>,
+    ) -> Result<(), MigrationError> {
+        exec_down::<Self>(ctx, to.as_deref()).await
     }
 }
 
-async fn exec_up<M>(ctx: &crate::context::Context<'_>) -> Result<(), MigrationError>
+async fn exec_up<M>(
+    ctx: &crate::context::Context<'_>,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<(), MigrationError>
 where
     M: MigratorTrait + ?Sized,
 {
     let qdrant = ctx.qdrant;
     let ledger = Ledger::new(qdrant);
     ledger.ensure().await?;
-    let mut migration_ids: Vec<MigrationId> = Vec::new();
-    for migration in M::migrations_by_status(MigrationStatus::Pending, qdrant).await? {
-        migration.migration.up(ctx).await?;
-        println!(
-            "applying {}, {}",
-            migration.migration.id(),
-            migration.migration.message()
-        );
-        migration_ids.push(migration.migration.id());
-    }
-    if !migration_ids.is_empty() {
-        ledger.insert_many(migration_ids).await?;
+    let migrations = M::migrations_with_status(qdrant).await?;
+    let graph = M::revision_graph(
+        migrations
+            .into_iter()
+            .filter(|migration| migration.status == MigrationStatus::Pending)
+            .collect(),
+    )?;
+    let path = graph.forward_path(
+        Some(from.unwrap_or(graph.queue())),
+        to.unwrap_or(graph.head()),
+    );
+
+    let ids_to_insert = join_all(path.into_iter().map(|revision| async move {
+        match graph.get(&revision) {
+            Some((_, migration)) => migration.up(ctx).await.map(|_| migration.name()),
+            None => Err(MigrationError::Graph(RevisionGraphError::NotFound(
+                format!("revision: `{:?}`", revision),
+            ))),
+        }
+    }))
+    .await
+    .into_iter()
+    .collect::<Result<Vec<_>, _>>()?;
+
+    if !ids_to_insert.is_empty() {
+        ledger.insert_many(ids_to_insert).await?;
     }
     Ok(())
 }
 
-async fn exec_down<M>(ctx: &crate::context::Context<'_>) -> Result<(), MigrationError>
+async fn exec_down<M>(
+    ctx: &crate::context::Context<'_>,
+    to: Option<&str>,
+) -> Result<(), MigrationError>
 where
     M: MigratorTrait + ?Sized,
 {
     let qdrant = ctx.qdrant;
     let ledger = Ledger::new(qdrant);
-    for migration in M::migrations_by_status(MigrationStatus::Applied, qdrant)
-        .await?
-        .into_iter()
-        .rev()
-    {
-        migration.migration.down(ctx).await?;
-        ledger.delete(migration.migration.id()).await?;
+    ledger.ensure().await?;
+    let migrations = M::migrations_with_status(qdrant).await?;
+
+    let graph = M::revision_graph(
+        migrations
+            .into_iter()
+            .filter(|migration| migration.status == MigrationStatus::Applied)
+            .collect(),
+    )?;
+
+    let path = graph.backward_path(Some(graph.head()), to);
+    let ids_to_remove = join_all(
+        path.into_iter()
+            .filter_map(|revision| graph.get(revision.as_ref()))
+            .map(|(id, migration)| async move {
+                match id {
+                    Some(id) => migration.down(ctx).await.map(|_| id),
+                    None => Err(MigrationError::Graph(RevisionGraphError::NotFound(
+                        format!("revision: `{:?}`", migration.revision().revision),
+                    ))),
+                }
+            }),
+    )
+    .await
+    .into_iter()
+    .collect::<Result<Vec<_>, _>>()?;
+
+    if !ids_to_remove.is_empty() {
+        ledger.delete_many(ids_to_remove).await?;
     }
+
     Ok(())
 }

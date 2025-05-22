@@ -1,23 +1,24 @@
 [package]
-name = "qdrant-tools"
+name = "vectorctl"
 version = "0.1.0"
 edition = "2024"
 
 [workspace]
 
 resolver = "2"
-members = [
-  "cli",
-  "macros",
-  "migration",
-  "template",
-]
-default-members = ["macros", "migration", "template"]
+members = ["cli", "macros", "migration", "template"]
+default-members = ["macros", "migration", "template", "."]
 
 
 [dependencies]
-async-trait = "0.1.88"
-qdrant-client = "1.14.0"
-macros = { path = "./macros" }
-migration = { path = "./migration" }
-sea-orm = "1.1.11"
+cli = { path = "cli", optional = true, default-features = false }
+macros = { path = "macros", optional = true }
+migration = { path = "migration", optional = true, default-features = false }
+
+[features]
+default = []
+cli = ["dep:cli"]
+macros = ["dep:macros"]
+migration = ["dep:migration"]
+
+all-tools = ["cli", "migration"]

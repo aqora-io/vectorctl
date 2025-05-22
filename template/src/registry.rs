@@ -1,19 +1,20 @@
-// Primary implementation from : https://github.com/aqora-io/cli/blob/main/template/src/registry.rs
-use std::io::Write;
-use std::path::Path;
-
 use handlebars::{
     Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError,
     RenderErrorReason,
 };
+use once_cell::sync::Lazy;
+use rayon::prelude::*;
 use rust_embed::RustEmbed;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
+use std::{
+    fs::{self, File},
+    io::{self, Write},
+    path::{Path, PathBuf},
+};
 use toml::Value as TomlValue;
 
-lazy_static::lazy_static! {
-    pub static ref REGISTRY: Registry = Registry::new();
-}
+pub static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
 
 #[derive(RustEmbed)]
 #[folder = "assets"]
@@ -79,6 +80,43 @@ impl Registry {
         Self { handlebars }
     }
 
+    fn write_bytes(path: &Path, bytes: &[u8]) -> io::Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        File::create(path)?.write_all(bytes)
+    }
+
+    fn strip_hbs(path: &Path) -> PathBuf {
+        let s = path.to_string_lossy();
+        match s.strip_suffix(".hbs") {
+            Some(stripped) => PathBuf::from(stripped),
+            None => path.to_path_buf(),
+        }
+    }
+
+    fn static_assets(prefix: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+        Assets::iter()
+            .filter_map(|entry| {
+                let p = Path::new(entry.as_ref());
+                (p.strip_prefix(prefix).ok())
+                    .filter(|rel| !rel.extension().map(|e| e == "hbs").unwrap_or(false))
+                    .and_then(|rel| {
+                        Assets::get(entry.as_ref()).map(|f| (rel.to_path_buf(), f.data.into()))
+                    })
+            })
+            .collect()
+    }
+
+    fn template_paths<'a>(&'a self, prefix: &'a Path) -> Vec<&'a str> {
+        self.handlebars
+            .get_templates()
+            .keys()
+            .map(String::as_str)
+            .filter(|p| Path::new(p).starts_with(prefix))
+            .collect()
+    }
+
     pub fn render_static<W: Write>(&self, path: &str, mut writer: W) -> Result<(), RenderError> {
         writer.write_all(
             &Assets::get(path)
@@ -98,44 +136,72 @@ impl Registry {
         Ok(())
     }
 
-    pub fn render_all<D: Serialize>(
+    pub fn render_all<D: Serialize + Sync>(
         &self,
         prefix: &str,
         data: &D,
-        out: impl AsRef<Path>,
+        out_dir: impl AsRef<Path>,
     ) -> Result<(), RenderError> {
-        let out = out.as_ref();
-        std::fs::create_dir_all(out)?;
+        let prefix = Path::new(prefix);
+        let out_dir = out_dir.as_ref();
+        fs::create_dir_all(out_dir)?;
 
-        let prefix_path = Path::new(prefix);
+        let assets = Self::static_assets(prefix);
 
-        let open_relative = |relative_path: &Path| {
-            let out_path = out.join(relative_path);
-            std::fs::create_dir_all(out_path.parent().unwrap())?;
-            std::fs::File::create(out_path)
-        };
+        assets.into_par_iter().try_for_each(|(rel, bytes)| {
+            Self::write_bytes(&out_dir.join(rel), &bytes).map_err(RenderError::from)
+        })?;
 
-        for entry in Assets::iter() {
-            let entry_path = Path::new(entry.as_ref());
-            if entry_path
-                .extension()
-                .map(|ext| ext == "hbs")
-                .unwrap_or(false)
-            {
-                continue;
-            }
-            if let Ok(relative_path) = entry_path.strip_prefix(prefix_path) {
-                self.render_static(&entry, &mut open_relative(relative_path)?)?;
-            }
-        }
+        let templates = self.template_paths(prefix);
 
-        for entry in self.handlebars.get_templates().keys() {
-            let entry_path = Path::new(entry);
-            if let Ok(relative_path) = entry_path.strip_prefix(prefix_path) {
-                self.render_template(entry, data, &mut open_relative(relative_path)?)?;
-            }
-        }
+        templates.into_par_iter().try_for_each(|tpl_path| {
+            let rel = Path::new(tpl_path).strip_prefix(prefix).unwrap();
+            let target = out_dir.join(Self::strip_hbs(rel));
+            let mut buf = Vec::new();
+            self.render_template(tpl_path, data, &mut buf)?;
+            Self::write_bytes(&target, &buf).map_err(RenderError::from)
+        })?;
 
+        Ok(())
+    }
+
+    pub fn render_template_with_filename<D: Serialize>(
+        &self,
+        template_path: &str,
+        filename_template: &str,
+        data: &D,
+        base_out: impl AsRef<Path>,
+    ) -> Result<(), RenderError> {
+        let dest_name = self.handlebars.render_template(filename_template, data)?;
+        let dest_path = base_out.as_ref().join(dest_name);
+        let mut buf = Vec::new();
+        self.render_template(template_path, data, &mut buf)?;
+        Self::write_bytes(&dest_path, &buf).map_err(RenderError::from)
+    }
+
+    pub fn render_all_with_filename_templates<D: Serialize + Sync>(
+        &self,
+        prefix: &str,
+        data: &D,
+        out_dir: impl AsRef<Path>,
+    ) -> Result<(), RenderError> {
+        let prefix = Path::new(prefix);
+        let out_dir = out_dir.as_ref();
+        fs::create_dir_all(out_dir)?;
+
+        let assets = Self::static_assets(prefix);
+
+        assets.into_par_iter().try_for_each(|(rel, bytes)| {
+            Self::write_bytes(&out_dir.join(rel), &bytes).map_err(RenderError::from)
+        })?;
+
+        let templates = self.template_paths(prefix);
+
+        templates.into_par_iter().try_for_each(|tpl_path| {
+            let rel = Path::new(tpl_path).strip_prefix(prefix).unwrap();
+            let filename_template = Self::strip_hbs(rel).to_string_lossy().into_owned();
+            self.render_template_with_filename(tpl_path, &filename_template, data, out_dir)
+        })?;
         Ok(())
     }
 }

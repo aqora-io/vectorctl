@@ -1,8 +1,6 @@
 use clap::Parser;
+use cli::commands::{MigrateError, MigrateSubcommands, create_new_revision, init};
 use qdrant_client::Qdrant;
-use qdrant_tools_cli::commands::{
-    MigrateCommandError, MigrateSubcommands, create_new_migration, init,
-};
 use thiserror::Error;
 
 use crate::migrator::{MigrationError, MigratorTrait};
@@ -12,7 +10,7 @@ pub enum CliError {
     #[error(transparent)]
     Migrate(#[from] MigrationError),
     #[error(transparent)]
-    Command(#[from] MigrateCommandError),
+    Command(#[from] MigrateError),
     #[error(transparent)]
     Qdrant(#[from] qdrant_client::QdrantError),
     #[error(transparent)]
@@ -34,6 +32,9 @@ pub struct Cli {
     )]
     database_url: Option<String>,
 
+    #[arg(short = 'k', long, help = "database api key", env = "DATABASE_API_KEY")]
+    api_key: Option<String>,
+
     #[command(subcommand)]
     command: Option<MigrateSubcommands>,
 }
@@ -48,20 +49,40 @@ where
         .database_url
         .expect("Environment variable 'DATABASE_URL' not set");
 
-    let qdrant = Qdrant::from_url(database_url.as_str()).build()?;
+    let qdrant = Qdrant::from_url(database_url.as_str())
+        .api_key(cli.api_key)
+        .build()?;
+
     let context = crate::context::Context::new(&qdrant);
 
     match cli.command {
         Some(MigrateSubcommands::Init {
             package_name,
             rust_edition,
-        }) => init(package_name, rust_edition, MIGRATION_DIR).await?,
-        Some(MigrateSubcommands::Generate { migration_name }) => {
-            create_new_migration(MIGRATION_DIR, &migration_name).await?
+        }) => {
+            init(
+                package_name.as_deref(),
+                rust_edition.as_deref(),
+                MIGRATION_DIR,
+            )
+            .await?
         }
-        Some(MigrateSubcommands::Up) | None => M::up(&context).await?,
-        Some(MigrateSubcommands::Down) => M::down(&context).await?,
+        Some(MigrateSubcommands::Generate {
+            migration_name,
+            message,
+        }) => {
+            create_new_revision(
+                MIGRATION_DIR,
+                &migration_name,
+                M::latest_revision()?.revision().revision,
+                message.as_deref(),
+            )
+            .await?
+        }
+        Some(MigrateSubcommands::Up { to }) => M::up(&context, to).await?,
+        Some(MigrateSubcommands::Down { to }) => M::down(&context, to).await?,
         Some(MigrateSubcommands::Status) => M::status(&context).await?,
+        None => M::up(&context, None).await?,
     }
     Ok(())
 }

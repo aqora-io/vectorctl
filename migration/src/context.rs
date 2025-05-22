@@ -1,11 +1,10 @@
+use fnv::FnvHashMap;
+use qdrant_client::Qdrant;
 use std::{
     any::{Any, TypeId},
     fmt::{self, Debug, Formatter},
     ops::Deref,
 };
-
-use fnv::FnvHashMap;
-use qdrant_client::Qdrant;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

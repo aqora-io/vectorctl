@@ -1,4 +1,4 @@
 #[tokio::main]
-async fn main() -> Result<(), migration::cli::CliError> {
-    migration::cli::run_migrate({{package_name}}::Migrator).await
+async fn main() -> Result<(), vectorctl::CliMigrationError> {
+    vectorctl::run_migrate({{package_name}}::Migrator).await
 }

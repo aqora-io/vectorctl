@@ -10,10 +10,10 @@ use crate::registry::REGISTRY;
 static SEMVER_REGEX: Lazy<Regex> = lazy_regex!(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
 );
-static SLUG_REGEX: Lazy<Regex> = lazy_regex!(r"^[-a-zA-Z0-9_]*$");
+static STRING_REGEX: Lazy<Regex> = lazy_regex!(r"^[a-zA-Z0-9_]+$");
 
 const DEFAULT_RUST_EDITION: &str = "2021";
-const DEFAULT_QDRANT_TOOLS_VERSION: &str = env!("CARGO_PKG_VERSION");
+const DEFAULT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_PACKAGE_NAME: &str = "migration";
 
 #[derive(Builder, Serialize, Debug)]
@@ -21,8 +21,8 @@ const DEFAULT_PACKAGE_NAME: &str = "migration";
 pub struct MigrationTemplate {
     #[builder(setter(into), default = "DEFAULT_RUST_EDITION.to_string()")]
     rust_edition: String,
-    #[builder(setter(into), default = "DEFAULT_QDRANT_TOOLS_VERSION.to_string()")]
-    qdrant_tools_version: String,
+    #[builder(setter(into), default = "DEFAULT_VERSION.to_string()")]
+    version: String,
     #[builder(setter(into), default = "DEFAULT_PACKAGE_NAME.to_string()")]
     package_name: String,
 }
@@ -39,23 +39,20 @@ impl MigrationTemplate {
 
 impl MigrationTemplateBuilder {
     fn validate(&self) -> Result<(), String> {
-        if let Some(qdrant_tools_version) = self.qdrant_tools_version.as_ref() {
-            if !SEMVER_REGEX.is_match(qdrant_tools_version) {
-                return Err(format!(
-                    "Invalid qdrant_tools version: {}",
-                    qdrant_tools_version
-                ));
+        if let Some(version) = self.version.as_ref() {
+            if !SEMVER_REGEX.is_match(version) {
+                return Err(format!("Invalid version: {}", version));
             }
         }
 
         if let Some(package_name) = self.package_name.as_ref() {
-            if !SLUG_REGEX.is_match(package_name) {
+            if !STRING_REGEX.is_match(package_name) {
                 return Err(format!("Invalid package_name: {}", package_name));
             }
         }
 
         if let Some(rust_edition) = self.rust_edition.as_ref() {
-            if !SLUG_REGEX.is_match(rust_edition) {
+            if !STRING_REGEX.is_match(rust_edition) {
                 return Err(format!("Invalid rust edition: {}", rust_edition));
             }
         }

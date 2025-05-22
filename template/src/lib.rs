@@ -1,5 +1,6 @@
 pub mod migration;
 pub mod registry;
+pub mod revision;
 
 pub use handlebars;
 

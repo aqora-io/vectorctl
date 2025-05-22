@@ -1,6 +1,6 @@
-use qdrant_tools_cli::CliError;
+use cli::CliError;
 
 #[tokio::main]
 async fn main() -> Result<(), CliError> {
-    qdrant_tools_cli::main().await
+    cli::main().await
 }

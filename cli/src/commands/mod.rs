@@ -1,9 +1,8 @@
 mod migrate;
-
 use clap::{Subcommand, command};
 use std::process::{self};
 
-pub use migrate::{MigrateCommandError, create_new_migration, init};
+pub use migrate::{MigrateError, create_new_revision, init};
 
 use crate::CliError;
 
@@ -36,11 +35,19 @@ pub enum MigrateSubcommands {
     Generate {
         #[arg(required = true, value_parser = parse_migration_name)]
         migration_name: String,
+        #[arg(short = 'm', long, required = false)]
+        message: Option<String>,
     },
     #[command(about = "Running up migratiosn")]
-    Up,
+    Up {
+        #[arg(long, required = false)]
+        to: Option<String>,
+    },
     #[command(about = "Running up migratiosn")]
-    Down,
+    Down {
+        #[arg(long, required = false)]
+        to: Option<String>,
+    },
     #[command(about = "Get migration status")]
     Status,
 }
@@ -48,47 +55,66 @@ pub enum MigrateSubcommands {
 pub async fn run_migrate_command(
     command: Option<MigrateSubcommands>,
     migration_dir: &str,
-    _database_url: &url::Url,
+    database_url: &url::Url,
     api_key: Option<String>,
 ) -> Result<(), CliError> {
     match command {
         Some(MigrateSubcommands::Init {
             package_name,
             rust_edition,
-        }) => migrate::init(package_name, rust_edition, migration_dir).await?,
-        Some(MigrateSubcommands::Generate { migration_name }) => {
-            migrate::create_new_migration(migration_dir, &migration_name).await?
+        }) => {
+            migrate::init(
+                package_name.as_deref(),
+                rust_edition.as_deref(),
+                migration_dir,
+            )
+            .await?
         }
         _ => {
-            let subcommand = match command {
-                Some(MigrateSubcommands::Up) => "up",
-                Some(MigrateSubcommands::Down) => "down",
-                Some(MigrateSubcommands::Status) => "status",
-                _ => "up",
+            let (subcommand, migration_name, message, to) = match command {
+                Some(MigrateSubcommands::Up { to }) => ("up", None, None, Some(to)),
+                Some(MigrateSubcommands::Down { to }) => ("down", None, None, Some(to)),
+                Some(MigrateSubcommands::Status) => ("status", None, None, None),
+                Some(MigrateSubcommands::Generate {
+                    migration_name,
+                    message,
+                }) => ("generate", Some(migration_name), Some(message), None),
+                _ => ("up", None, None, None),
             };
 
-            // Construct the `--manifest-path`
             let manifest_path = if migration_dir.ends_with('/') {
                 format!("{migration_dir}Cargo.toml")
             } else {
                 format!("{migration_dir}/Cargo.toml")
             };
-            // Construct the arguments that will be supplied to `cargo` command
+
             let mut args = vec!["run", "--manifest-path", &manifest_path, "--", subcommand];
+
+            if let Some(name) = migration_name.as_ref() {
+                args.extend(["", name.as_str()]);
+            }
+
+            args.extend(["-u", database_url.as_str()]);
 
             if let Some(api_key) = api_key.as_ref() {
                 args.extend(["-k", api_key]);
             }
 
-            // Run migrator CLI on user's behalf
+            if let Some(Some(message)) = message.as_ref() {
+                args.extend(["-m", message]);
+            }
+
+            if let Some(Some(to)) = to.as_ref() {
+                args.extend(["--to", to]);
+            }
+
             println!("Running `cargo {}`", args.join(" "));
             let exit_status = process::Command::new("cargo")
                 .args(args)
                 .status()
                 .map_err(|err| CliError::Custom(err.to_string()))?;
             if !exit_status.success() {
-                // Propagate the error if any
-                return Err(CliError::Custom("naa".into()));
+                return Err(CliError::Custom(format!("exit status {}", exit_status)));
             }
         }
     }

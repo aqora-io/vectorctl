@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "{{rust_edition}}"
 
 [dependencies] 
-macros = { path = "/Users/angeldijoux/Documents/aqora/qdrant-tools/macros" }
-cli = { path = "/Users/angeldijoux/Documents/aqora/qdrant-tools/cli" } 
-migration = { path = "/Users/angeldijoux/Documents/aqora/qdrant-tools/migration" }
-
+vectorctl = { git = "https://github.com/aqora-io/vectorctl", branch = "main" features = [
+  "migration",
+  "macros",
+] }
 async-trait = "0.1"
 tokio = "1.45.0"

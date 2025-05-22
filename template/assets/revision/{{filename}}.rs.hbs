@@ -1,0 +1,21 @@
+use vectorctl::{DeriveMigrationMeta, MigrationError, MigrationTrait, Revision};
+
+pub const REVISION: Revision = Revision {
+    date: "{{date}}",
+    down_revision: {{#if down_revision_id}}Some("{{down_revision_id}}"){{else}}None{{/if}},
+    revision: "{{revision_id}}",
+    message: {{#if message}}Some("{{message}}"){{else}}None{{/if}},
+};
+
+#[derive(DeriveMigrationMeta, Debug)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, _ctx: &vectorctl::Context<'_>) -> Result<(), MigrationError> {
+        todo!();
+    }
+    async fn down(&self, _ctx: &vectorctl::Context<'_>) -> Result<(), MigrationError> {
+        todo!();
+    }
+}

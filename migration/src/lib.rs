@@ -1,8 +1,13 @@
-use migrator::{MigrationError, MigrationId};
+mod cli;
+mod context;
+mod migrator;
+mod revision;
 
-pub mod cli;
-pub mod context;
-pub mod migrator;
+use std::fmt::Debug;
+
+pub use cli::{CliError as CliMigrationError, run_migrate};
+pub use context::{Context, ContextError, Resource};
+pub use migrator::{MigrationError, MigrationName, MigratorTrait};
 
 pub fn get_file_stem(path: &str) -> &str {
     std::path::Path::new(path)
@@ -11,13 +16,21 @@ pub fn get_file_stem(path: &str) -> &str {
         .unwrap()
 }
 
+#[derive(Debug)]
+pub struct Revision<'a> {
+    pub message: Option<&'a str>,
+    pub revision: &'a str,
+    pub down_revision: Option<&'a str>,
+    pub date: &'a str,
+}
+
 pub trait MigrationMeta {
-    fn id(&self) -> MigrationId;
-    fn message(&self) -> String;
+    fn name(&self) -> MigrationName;
+    fn revision(&self) -> Revision;
 }
 
 #[async_trait::async_trait]
-pub trait MigrationTrait: MigrationMeta + Send + Sync {
+pub trait MigrationTrait: MigrationMeta + Send + Sync + Debug {
     async fn up(&self, ctx: &context::Context<'_>) -> Result<(), MigrationError>;
     async fn down(&self, ctx: &context::Context<'_>) -> Result<(), MigrationError>;
 }

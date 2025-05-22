@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+lazy-regex = { version = "3.4.1", features = ["perf"] }
 proc-macro-crate = "3.3.0"
 proc-macro2 = "1.0.95"
 quote = "1.0.40"
 syn = "2.0.101"
 
 [lib]
-name = "qdrant_tools_macro"
 path = "src/lib.rs"
 proc-macro = true

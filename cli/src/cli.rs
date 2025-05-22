@@ -9,7 +9,7 @@ pub enum CliError {
     #[error(transparent)]
     Qdrant(#[from] qdrant_client::QdrantError),
     #[error(transparent)]
-    Migrate(#[from] crate::commands::MigrateCommandError),
+    Migrate(#[from] crate::commands::MigrateError),
     #[error("custom: {0}")]
     Custom(String),
 }
@@ -26,7 +26,6 @@ pub enum Commands {
             default_value = "./migration"
         )]
         migration_dir: PathBuf,
-
         #[arg(
             short = 'u',
             long,
@@ -35,15 +34,8 @@ pub enum Commands {
             default_value = "http://localhost:6334"
         )]
         database_url: url::Url,
-
-        #[arg(
-            short = 'k',
-            long,
-            help = "database api key",
-            env = "QDRANT__SERVICE__API_KEY"
-        )]
+        #[arg(short = 'k', long, help = "database api key", env = "DATABASE_API_KEY")]
         api_key: Option<String>,
-
         #[command(subcommand)]
         command: Option<MigrateSubcommands>,
     },
