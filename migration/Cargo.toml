@@ -17,4 +17,4 @@ uuid = { version = "1.16", features = ["atomic", "v7", "zerocopy"] }
 once_cell = "1.21"
 rustc-hash = "2.1"
 futures = "0.3"
-tinyvec = "1.9"
+tinyvec = "1.6"
