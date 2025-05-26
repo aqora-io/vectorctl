@@ -360,21 +360,16 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
- "prettyplease",
- "proc-macro2",
  "proptest",
  "qdrant-client",
- "quote",
  "rand 0.9.1",
  "regex",
- "serde",
  "syn",
  "tempfile",
  "template",
  "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
- "toml",
  "url",
 ]
 
@@ -1152,12 +1147,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "241eaef5fd12c88705a01fc1066c48c4b36e0dd4377dcdc7ec3942cea7a69956"
 
 [[package]]
-name = "local_vec"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b6677a1e13eee160fa59f3a6bef9ad1335fd4f318269b38d64a910f887b6cfc"
-
-[[package]]
 name = "lock_api"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1184,7 +1173,6 @@ name = "macros"
 version = "0.1.0"
 dependencies = [
  "lazy-regex",
- "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn",
@@ -1217,10 +1205,8 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_json",
- "small_vec",
  "thiserror 2.0.12",
  "tinyvec",
- "tokio",
  "uuid",
 ]
 
@@ -1417,25 +1403,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
  "zerocopy",
-]
-
-[[package]]
-name = "prettyplease"
-version = "0.2.32"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "664ec5419c51e34154eec046ebcba56312d5a2fc3b09a06da188e1ad21afadf6"
-dependencies = [
- "proc-macro2",
- "syn",
-]
-
-[[package]]
-name = "proc-macro-crate"
-version = "3.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edce586971a4dfaa28950c6f18ed55e0406c1ab88bbce2c6f6293a7aaba73d35"
-dependencies = [
- "toml_edit",
 ]
 
 [[package]]
@@ -2065,15 +2032,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "small_vec"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "373f6d461a970dd3178e712d5c262ccd453e2840751683bf3878b04535bea785"
-dependencies = [
- "local_vec",
-]
-
-[[package]]
 name = "smallvec"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2158,7 +2116,6 @@ dependencies = [
  "derive_builder",
  "handlebars",
  "lazy-regex",
- "lazy_static",
  "once_cell",
  "rayon",
  "rust-embed",
