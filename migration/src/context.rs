@@ -1,5 +1,4 @@
 use fnv::FnvHashMap;
-use qdrant_client::Qdrant;
 use std::{
     any::{Any, TypeId},
     fmt::{self, Debug, Formatter},
@@ -36,15 +35,14 @@ impl Debug for Resource {
     }
 }
 
-pub struct Context<'a> {
-    pub qdrant: &'a Qdrant,
-    resources: Resource,
+#[derive(Default)]
+pub struct Context {
+    pub resources: Resource,
 }
 
-impl<'a> Context<'a> {
-    pub fn new(qdrant: &'a Qdrant) -> Self {
+impl Context {
+    pub fn new() -> Self {
         Self {
-            qdrant,
             resources: Resource::default(),
         }
     }
