@@ -1,5 +1,5 @@
 use crate::{
-    MigrationTrait,
+    ContextError, MigrationTrait,
     revision::{RevisionGraph, RevisionGraphError},
 };
 use chrono::{DateTime, Utc};
@@ -43,7 +43,7 @@ pub enum MigrationError {
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
     #[error(transparent)]
-    Qdrant(#[from] qdrant_client::QdrantError),
+    Qdrant(Box<qdrant_client::QdrantError>),
     #[error(transparent)]
     Graph(#[from] RevisionGraphError),
     #[error("migration {0} missing in file‑system")]
@@ -52,6 +52,14 @@ pub enum MigrationError {
     PayloadMissing(&'static str),
     #[error(transparent)]
     Uuid(#[from] uuid::Error),
+    #[error(transparent)]
+    Context(#[from] ContextError),
+}
+
+impl From<qdrant_client::QdrantError> for MigrationError {
+    fn from(e: qdrant_client::QdrantError) -> Self {
+        Self::Qdrant(Box::new(e))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -239,8 +247,8 @@ pub trait MigratorTrait: Send {
             .collect())
     }
 
-    async fn status(ctx: &crate::context::Context<'_>) -> Result<(), MigrationError> {
-        Self::migrations_with_status(ctx.qdrant)
+    async fn status(ctx: &crate::context::Context) -> Result<(), MigrationError> {
+        Self::migrations_with_status(ctx.resource::<Qdrant>()?)
             .await?
             .into_iter()
             .for_each(|migration| {
@@ -260,39 +268,33 @@ pub trait MigratorTrait: Send {
             .expect("At this point we should at least have one migration"))
     }
 
-    async fn refresh(ctx: &crate::context::Context<'_>) -> Result<(), MigrationError> {
+    async fn refresh(ctx: &crate::context::Context) -> Result<(), MigrationError> {
         exec_down::<Self>(ctx, None).await?;
         exec_up::<Self>(ctx, None, None).await
     }
 
-    async fn reset(ctx: &crate::context::Context<'_>) -> Result<(), MigrationError> {
+    async fn reset(ctx: &crate::context::Context) -> Result<(), MigrationError> {
         exec_down::<Self>(ctx, None).await
     }
 
-    async fn up(
-        ctx: &crate::context::Context<'_>,
-        to: Option<String>,
-    ) -> Result<(), MigrationError> {
+    async fn up(ctx: &crate::context::Context, to: Option<String>) -> Result<(), MigrationError> {
         exec_up::<Self>(ctx, None, to.as_deref()).await
     }
 
-    async fn down(
-        ctx: &crate::context::Context<'_>,
-        to: Option<String>,
-    ) -> Result<(), MigrationError> {
+    async fn down(ctx: &crate::context::Context, to: Option<String>) -> Result<(), MigrationError> {
         exec_down::<Self>(ctx, to.as_deref()).await
     }
 }
 
 async fn exec_up<M>(
-    ctx: &crate::context::Context<'_>,
+    ctx: &crate::context::Context,
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<(), MigrationError>
 where
     M: MigratorTrait + ?Sized,
 {
-    let qdrant = ctx.qdrant;
+    let qdrant = ctx.resource::<Qdrant>()?;
     let ledger = Ledger::new(qdrant);
     ledger.ensure().await?;
     let migrations = M::migrations_with_status(qdrant).await?;
@@ -325,14 +327,11 @@ where
     Ok(())
 }
 
-async fn exec_down<M>(
-    ctx: &crate::context::Context<'_>,
-    to: Option<&str>,
-) -> Result<(), MigrationError>
+async fn exec_down<M>(ctx: &crate::context::Context, to: Option<&str>) -> Result<(), MigrationError>
 where
     M: MigratorTrait + ?Sized,
 {
-    let qdrant = ctx.qdrant;
+    let qdrant = ctx.resource::<Qdrant>()?;
     let ledger = Ledger::new(qdrant);
     ledger.ensure().await?;
     let migrations = M::migrations_with_status(qdrant).await?;

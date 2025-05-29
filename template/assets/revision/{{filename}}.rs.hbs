@@ -12,10 +12,10 @@ pub struct Migration;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
-    async fn up(&self, _ctx: &vectorctl::Context<'_>) -> Result<(), MigrationError> {
+    async fn up(&self, _ctx: &vectorctl::Context) -> Result<(), MigrationError> {
         todo!();
     }
-    async fn down(&self, _ctx: &vectorctl::Context<'_>) -> Result<(), MigrationError> {
+    async fn down(&self, _ctx: &vectorctl::Context) -> Result<(), MigrationError> {
         todo!();
     }
 }

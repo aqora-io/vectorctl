@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 use cli::commands::{MigrateError, MigrateSubcommands, create_new_revision, init};
 use qdrant_client::Qdrant;
@@ -17,8 +19,6 @@ pub enum CliError {
     Context(#[from] crate::context::ContextError),
 }
 
-const MIGRATION_DIR: &str = "./";
-
 #[derive(Parser)]
 #[command(version)]
 pub struct Cli {
@@ -32,18 +32,35 @@ pub struct Cli {
     )]
     database_url: Option<String>,
 
-    #[arg(short = 'k', long, help = "database api key", env = "DATABASE_API_KEY")]
+    #[arg(
+        global = true,
+        short = 'd',
+        long,
+        env = "MIGRATION_DIR",
+        default_value = "./"
+    )]
+    migration_dir: PathBuf,
+
+    #[arg(
+        global = true,
+        short = 'k',
+        long,
+        help = "database api key",
+        env = "DATABASE_API_KEY"
+    )]
     api_key: Option<String>,
 
     #[command(subcommand)]
     command: Option<MigrateSubcommands>,
 }
 
-pub async fn run_migrate<M>(_: M) -> Result<(), CliError>
+pub async fn run_migrate<M>(_: M, context: &mut crate::context::Context) -> Result<(), CliError>
 where
     M: MigratorTrait,
 {
     let cli = Cli::parse();
+
+    let migration_dir = cli.migration_dir;
 
     let database_url = cli
         .database_url
@@ -53,7 +70,7 @@ where
         .api_key(cli.api_key)
         .build()?;
 
-    let context = crate::context::Context::new(&qdrant);
+    context.insert_resource::<Qdrant>(qdrant);
 
     match cli.command {
         Some(MigrateSubcommands::Init {
@@ -63,7 +80,7 @@ where
             init(
                 package_name.as_deref(),
                 rust_edition.as_deref(),
-                MIGRATION_DIR,
+                migration_dir,
             )
             .await?
         }
@@ -72,17 +89,17 @@ where
             message,
         }) => {
             create_new_revision(
-                MIGRATION_DIR,
+                migration_dir,
                 &migration_name,
                 M::latest_revision()?.revision().revision,
                 message.as_deref(),
             )
             .await?
         }
-        Some(MigrateSubcommands::Up { to }) => M::up(&context, to).await?,
-        Some(MigrateSubcommands::Down { to }) => M::down(&context, to).await?,
-        Some(MigrateSubcommands::Status) => M::status(&context).await?,
-        None => M::up(&context, None).await?,
+        Some(MigrateSubcommands::Up { to }) => M::up(context, to).await?,
+        Some(MigrateSubcommands::Down { to }) => M::down(context, to).await?,
+        Some(MigrateSubcommands::Status) => M::status(context).await?,
+        None => M::up(context, None).await?,
     }
     Ok(())
 }

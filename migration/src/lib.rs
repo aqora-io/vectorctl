@@ -31,6 +31,6 @@ pub trait MigrationMeta {
 
 #[async_trait::async_trait]
 pub trait MigrationTrait: MigrationMeta + Send + Sync + Debug {
-    async fn up(&self, ctx: &context::Context<'_>) -> Result<(), MigrationError>;
-    async fn down(&self, ctx: &context::Context<'_>) -> Result<(), MigrationError>;
+    async fn up(&self, ctx: &context::Context) -> Result<(), MigrationError>;
+    async fn down(&self, ctx: &context::Context) -> Result<(), MigrationError>;
 }
