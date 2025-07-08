@@ -27,6 +27,10 @@ impl Resource {
     pub fn insert<R: Any + Send + Sync>(&mut self, resource: R) {
         self.0.insert(TypeId::of::<R>(), Box::new(resource));
     }
+
+    pub fn insert_many<R: Any + Send + Sync>(&mut self, resources: Vec<R>) {
+        let _ = resources.into_iter().map(|resource| self.insert(resource));
+    }
 }
 
 impl Debug for Resource {
@@ -35,14 +39,24 @@ impl Debug for Resource {
     }
 }
 
-#[derive(Default)]
+#[cfg(feature = "qdrant-backend")]
+pub type Backend = backend::Qdrant;
+
+#[cfg(not(any(feature = "qdrant-backend")))]
+compile_error!(
+    "You must enable exactly one vectordb backend feature: \
+     either `qdrant-backend`"
+);
+
 pub struct Context {
     pub resources: Resource,
+    pub backend: Backend,
 }
 
 impl Context {
-    pub fn new() -> Self {
+    pub fn new(backend: Backend) -> Self {
         Self {
+            backend,
             resources: Resource::default(),
         }
     }
@@ -70,5 +84,9 @@ impl Context {
 
     pub fn insert_resource<R: Any + Send + Sync>(&mut self, resource: R) {
         self.resources.insert(resource)
+    }
+
+    pub fn insert_resources<R: Any + Send + Sync>(&mut self, resources: Vec<R>) {
+        self.resources.insert_many(resources)
     }
 }
