@@ -1,16 +1,18 @@
-[workspace]
-# A separate workspace
-
 [package]
-name = "migration"
+name = "qdrant_exemple"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vectorctl = { git = "https://github.com/aqora-io/vectorctl", branch = "main", features = [
-  "migration",
-  "macros",
-] }
 async-trait = "0.1"
 tokio = "1.45.0"
 qdrant-client = "1.14.0"
+
+[dependencies.vectorctl]
+path = "../../"
+features = ["macros", "migration", "qdrant-backend"]
+
+[features]
+qdrant-backend = ["vectorctl/qdrant-backend"]
+macros = ["vectorctl/macros"]
+migration = ["vectorctl/migration"]

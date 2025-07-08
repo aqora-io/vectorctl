@@ -18,7 +18,7 @@ impl DeriveMigrationMeta {
         quote!(
             #[automatically_derived]
             impl vectorctl::MigrationMeta for #ident {
-                fn name(&self) -> vectorctl::MigrationName {
+                fn name(&self) -> String {
                     vectorctl::get_file_stem(file!()).into()
                 }
 

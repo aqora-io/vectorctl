@@ -6,19 +6,29 @@ edition = "2024"
 [workspace]
 
 resolver = "2"
-members = ["cli", "macros", "migration", "template"]
+members = [
+  "backend",
+  "cli",
+  "macros",
+  "migration",
+  "template",
+  "examples/qdrant_example",
+]
 default-members = ["macros", "migration", "template", "."]
 
 
 [dependencies]
+backend = { path = "backend", optional = true, default-features = false }
 cli = { path = "cli", optional = true, default-features = false }
 macros = { path = "macros", optional = true }
 migration = { path = "migration", optional = true, default-features = false }
 
 [features]
 default = []
+
+qdrant-backend = ["backend/qdrant-backend", "migration/qdrant-backend"]
+sea-backend = ["migration/sea-backend"]
+
 cli = ["dep:cli"]
 macros = ["dep:macros"]
 migration = ["dep:migration"]
-
-all-tools = ["cli", "migration"]

@@ -7,7 +7,7 @@ use std::fmt::Debug;
 
 pub use cli::{CliError as CliMigrationError, run_migrate};
 pub use context::{Context, ContextError, Resource};
-pub use migrator::{MigrationError, MigrationName, MigratorTrait};
+pub use migrator::{MigrationError, MigratorTrait};
 
 pub fn get_file_stem(path: &str) -> &str {
     std::path::Path::new(path)
@@ -25,7 +25,7 @@ pub struct Revision<'a> {
 }
 
 pub trait MigrationMeta {
-    fn name(&self) -> MigrationName;
+    fn name(&self) -> String;
     fn revision(&self) -> Revision;
 }
 
