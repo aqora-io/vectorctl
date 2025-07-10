@@ -16,7 +16,7 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, ctx: &vectorctl::Context) -> Result<(), MigrationError> {
-        let qdrant = &ctx.backend.backend;
+        let qdrant = &ctx.backend.client;
 
         qdrant
             .create_collection(
@@ -29,7 +29,7 @@ impl MigrationTrait for Migration {
         Ok(())
     }
     async fn down(&self, ctx: &vectorctl::Context) -> Result<(), MigrationError> {
-        let qdrant = &ctx.backend.backend;
+        let qdrant = &ctx.backend.client;
 
         qdrant
             .delete_collection("my_collection")

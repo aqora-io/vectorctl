@@ -34,7 +34,9 @@ pub trait VectorTrait: Send + Sync + 'static {
     where
         Self: Sized;
 
-    fn client(&self) -> Arc<Self::Client>;
+    fn new_with_client(client: Arc<Self::Client>) -> Self
+    where
+        Self: Sized;
 
     fn ledger(&self) -> Self::Ledger;
 }

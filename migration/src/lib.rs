@@ -6,7 +6,7 @@ mod revision;
 use std::fmt::Debug;
 
 pub use cli::{CliError as CliMigrationError, run_migrate};
-pub use context::{Context, ContextError, Resource};
+pub use context::{Backend, Context, ContextError, Resource};
 pub use migrator::{MigrationError, MigratorTrait};
 
 pub fn get_file_stem(path: &str) -> &str {

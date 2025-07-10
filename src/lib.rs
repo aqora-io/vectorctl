@@ -4,4 +4,4 @@ pub use migration::*;
 #[cfg(feature = "macros")]
 pub use macros::*;
 
-pub use backend::generic::VectorBackendError;
+pub use backend::generic::{LedgerTrait, VectorBackendError, VectorTrait};

@@ -40,25 +40,25 @@ impl TryFrom<Payload> for PointStruct {
 }
 
 pub struct QdrantBackend {
-    pub backend: Arc<Qdrant>,
+    pub client: Arc<Qdrant>,
 }
 
 impl QdrantBackend {
-    fn new(backend: Qdrant) -> Self {
+    fn new(client: Qdrant) -> Self {
         Self {
-            backend: Arc::new(backend),
+            client: Arc::new(client),
         }
     }
 }
 
 #[derive(Clone)]
 pub struct Ledger {
-    backend: Arc<Qdrant>,
+    client: Arc<Qdrant>,
 }
 
 impl Ledger {
-    pub fn new(backend: Arc<Qdrant>) -> Self {
-        Self { backend }
+    pub fn new(client: Arc<Qdrant>) -> Self {
+        Self { client }
     }
 }
 
@@ -73,7 +73,7 @@ impl LedgerTrait for Ledger {
 
     async fn ensure(&self) -> Result<(), VectorBackendError> {
         if self
-            .backend
+            .client
             .collection_exists(self.collection_name())
             .await?
         {
@@ -84,13 +84,13 @@ impl LedgerTrait for Ledger {
             .vectors_config(VectorParamsBuilder::new(1, Distance::Cosine))
             .build();
 
-        self.backend.create_collection(builder).await?;
+        self.client.create_collection(builder).await?;
         Ok(())
     }
 
     async fn retrieve(&self) -> Result<HashMap<Self::Key, Self::Value>, VectorBackendError> {
         let scroll = self
-            .backend
+            .client
             .scroll(
                 ScrollPointsBuilder::new(self.collection_name())
                     .with_payload(true)
@@ -128,7 +128,7 @@ impl LedgerTrait for Ledger {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        self.backend
+        self.client
             .upsert_points(UpsertPointsBuilder::new(self.collection_name(), points).wait(true))
             .await?;
 
@@ -147,7 +147,7 @@ impl LedgerTrait for Ledger {
             .points(points)
             .build();
 
-        self.backend.delete_points(builder).await?;
+        self.client.delete_points(builder).await?;
         Ok(())
     }
 }
@@ -168,11 +168,11 @@ impl VectorTrait for QdrantBackend {
         ))
     }
 
-    fn ledger(&self) -> Self::Ledger {
-        Ledger::new(Arc::clone(&self.backend))
+    fn new_with_client(client: Arc<Self::Client>) -> Self {
+        Self { client }
     }
 
-    fn client(&self) -> Arc<Self::Client> {
-        self.backend.to_owned()
+    fn ledger(&self) -> Self::Ledger {
+        Ledger::new(Arc::clone(&self.client))
     }
 }
