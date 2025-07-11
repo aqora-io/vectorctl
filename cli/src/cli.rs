@@ -27,6 +27,7 @@ pub enum Commands {
         )]
         migration_dir: PathBuf,
         #[arg(
+            global = true,
             short = 'u',
             long,
             help = "database url",
@@ -34,7 +35,13 @@ pub enum Commands {
             default_value = "http://localhost:6334"
         )]
         database_url: url::Url,
-        #[arg(short = 'k', long, help = "database api key", env = "DATABASE_API_KEY")]
+        #[arg(
+            global = true,
+            short = 'k',
+            long,
+            help = "database api key",
+            env = "DATABASE_API_KEY"
+        )]
         api_key: Option<String>,
         #[command(subcommand)]
         command: Option<MigrateSubcommands>,

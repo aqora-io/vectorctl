@@ -36,7 +36,7 @@ pub enum MigrateSubcommands {
     },
     #[command(about = "Generate new migration")]
     Generate {
-        #[arg(long, required = true, value_parser = parse_migration_name)]
+        #[arg(required = true, value_parser = parse_migration_name)]
         name: String,
         #[arg(short = 'm', long, required = false)]
         message: Option<String>,
@@ -80,7 +80,7 @@ pub async fn run_migrate_command(
         | sub @ Some(MigrateSubcommands::Status) => {
             let (cmd_str, extra_args) = match sub {
                 Some(MigrateSubcommands::Generate { name, message }) => ("generate", {
-                    let mut args = vec!["--name".into(), name];
+                    let mut args = vec![name];
                     if let Some(msg) = message {
                         args.push("-m".into());
                         args.push(msg);
