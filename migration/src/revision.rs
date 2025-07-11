@@ -14,17 +14,15 @@ pub enum RevisionGraphError {
 }
 
 #[derive(Debug)]
-struct Node {
+pub struct Node {
     /// revision ID
-    revision: Revision,
+    pub revision: Revision,
     /// child indices
-    children: ArrayVec<[Ix; 4]>,
+    pub children: ArrayVec<[Ix; 4]>,
     /// migration for this revision
-    migration: Arc<dyn MigrationTrait>,
-    /// backend UUID, if persisted
-    id: Option<Uuid>,
+    pub migration: Migration,
     /// parent index
-    parent: Option<Ix>,
+    pub parent: Option<Ix>,
 }
 
 #[derive(Debug)]
@@ -40,20 +38,22 @@ impl RevisionGraph {
         let capacity = migrations.len();
         let mut nodes = Vec::with_capacity(capacity);
         let mut index = HashMap::with_capacity_and_hasher(capacity, Default::default());
-        migrations.into_iter().enumerate().for_each(|(ix, m)| {
-            let meta = m.migration.revision();
-            let revision: Revision = Arc::from(meta.revision);
-            index.insert(revision.clone(), ix);
-            nodes.push(Node {
-                revision,
-                id: m.id,
-                migration: Arc::from(m.migration),
-                parent: None,
-                children: ArrayVec::new(),
+        migrations
+            .into_iter()
+            .enumerate()
+            .for_each(|(ix, migration)| {
+                let meta = migration.runner.revision();
+                let revision: Revision = Arc::from(meta.revision);
+                index.insert(revision.clone(), ix);
+                nodes.push(Node {
+                    revision,
+                    migration,
+                    parent: None,
+                    children: ArrayVec::new(),
+                });
             });
-        });
         (0..nodes.len()).for_each(|ix| {
-            if let Some(parent_rev) = nodes[ix].migration.revision().down_revision {
+            if let Some(parent_rev) = nodes[ix].migration.runner.revision().down_revision {
                 if let Some(&p_ix) = index.get(parent_rev) {
                     nodes[ix].parent = Some(p_ix);
                     nodes[p_ix].children.push(ix);
@@ -92,31 +92,162 @@ impl RevisionGraph {
         self.nodes[0].revision.as_ref()
     }
 
-    pub fn forward_path(&self, current: Option<&str>, target: &str) -> Vec<Revision> {
+    pub fn forward_path(&self, current: Option<&str>, target: &str) -> Vec<&Node> {
         let start_ix = current.and_then(|rev| self.ix(rev));
         let target_ix = self.ix(target).expect("target revision must exist");
 
         std::iter::successors(start_ix, |&ix| self.child_ix(ix))
             .take_while(|&ix| ix != target_ix)
             .chain(std::iter::once(target_ix))
-            .map(|ix| self.nodes[ix].revision.clone())
+            .map(|ix| &self.nodes[ix])
             .collect()
     }
 
-    pub fn backward_path(&self, current: Option<&str>, stop: Option<&str>) -> Vec<Revision> {
+    pub fn backward_path(&self, current: Option<&str>, stop: Option<&str>) -> Vec<&Node> {
         let stop_ix = stop.and_then(|r| self.ix(r));
         let start_ix = current.and_then(|r| self.ix(r));
 
         std::iter::successors(start_ix, |&ix| self.parent_ix(ix))
             .take_while(|&ix| Some(ix) != stop_ix)
-            .map(|ix| self.nodes[ix].revision.clone())
+            .map(|ix| &self.nodes[ix])
             .collect()
     }
 
-    pub fn get(&self, rev: &str) -> Option<(Option<Uuid>, &Arc<dyn MigrationTrait>)> {
+    pub fn get(&self, rev: &str) -> Option<(Option<Uuid>, &dyn MigrationTrait)> {
         self.ix(rev).map(|ix| {
-            let n = &self.nodes[ix];
-            (n.id, &n.migration)
+            let node = &self.nodes[ix];
+            (node.migration.id, node.migration.runner.as_ref())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MigrationError;
+    use crate::MigrationMeta;
+    use crate::Revision as RevisionMeta;
+    use crate::migrator::MigrationStatus;
+
+    use uuid::Uuid;
+
+    #[derive(Debug)]
+    struct TestMigration {
+        rev: &'static str,
+        down_rev: Option<&'static str>,
+    }
+
+    impl MigrationMeta for TestMigration {
+        fn name(&self) -> String {
+            self.rev.to_string()
+        }
+
+        fn revision(&self) -> RevisionMeta<'_> {
+            RevisionMeta {
+                message: None,
+                revision: self.rev,
+                down_revision: self.down_rev,
+                date: "2023-01-01",
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MigrationTrait for TestMigration {
+        async fn up(&self, _ctx: &crate::context::Context) -> Result<(), MigrationError> {
+            Ok(())
+        }
+
+        async fn down(&self, _ctx: &crate::context::Context) -> Result<(), MigrationError> {
+            Ok(())
+        }
+    }
+
+    fn make_migration(
+        rev: &'static str,
+        down_rev: Option<&'static str>,
+        status: Option<MigrationStatus>,
+    ) -> Migration {
+        Migration {
+            id: Some(Uuid::now_v7()),
+            status: status.unwrap_or(MigrationStatus::Pending),
+            runner: Box::new(TestMigration { rev, down_rev }),
+        }
+    }
+
+    #[test]
+    fn test_graph_construction_and_paths() {
+        let migrations = vec![
+            make_migration("a", None, None),
+            make_migration("b", Some("a"), None),
+            make_migration("c", Some("b"), None),
+        ];
+
+        let graph = RevisionGraph::try_from(migrations).expect("graph should be created");
+
+        assert_eq!(graph.queue(), "a");
+        assert_eq!(graph.head(), "c");
+
+        let forward = graph.forward_path(Some("a"), "c");
+        assert_eq!(
+            forward
+                .iter()
+                .map(|r| r.revision.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["a", "b", "c"]
+        );
+
+        let backward = graph.backward_path(Some("c"), Some("a"));
+        assert_eq!(
+            backward
+                .iter()
+                .map(|r| r.revision.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["c", "b"]
+        );
+
+        let (id, migration) = graph.get("b").expect("should find 'b'");
+        assert!(id.is_some());
+        assert_eq!(migration.revision().revision, "b");
+    }
+
+    #[test]
+    fn test_graph_contruction_with_applied_revision() {
+        let migrations = vec![make_migration("a", None, Some(MigrationStatus::Applied))];
+
+        let graph = RevisionGraph::try_from(migrations).expect("graph should be created");
+
+        assert_eq!(graph.head(), "a");
+        assert_eq!(graph.queue(), "a");
+
+        let forward = graph.forward_path(None, "a");
+        assert_eq!(
+            forward
+                .iter()
+                .map(|r| r.revision.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["a"]
+        );
+
+        let backward = graph.backward_path(Some("a"), None);
+        assert_eq!(
+            backward
+                .iter()
+                .map(|r| r.revision.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["a"]
+        );
+    }
+
+    #[test]
+    fn test_no_head_error() {
+        let migrations = vec![
+            make_migration("a", Some("c"), None),
+            make_migration("b", Some("a"), None),
+            make_migration("c", Some("b"), None),
+        ];
+
+        let graph = RevisionGraph::try_from(migrations);
+        assert!(matches!(graph, Err(RevisionGraphError::NotFound(_))));
     }
 }
