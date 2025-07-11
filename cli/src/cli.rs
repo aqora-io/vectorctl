@@ -40,6 +40,7 @@ pub enum Commands {
         command: Option<MigrateSubcommands>,
     },
 }
+
 #[derive(Parser, Debug)]
 #[command(version, author)]
 pub struct Cli {
@@ -52,19 +53,11 @@ pub async fn main() -> Result<(), CliError> {
 
     match cli.command {
         Commands::Migrate {
-            migration_dir,
+            api_key,
             command,
             database_url,
-            api_key,
-        } => {
-            run_migrate_command(
-                command,
-                migration_dir.to_string_lossy().to_string().as_str(),
-                &database_url,
-                api_key,
-            )
-            .await?
-        }
+            migration_dir,
+        } => run_migrate_command(command, migration_dir, database_url, api_key).await?,
     }
 
     Ok(())

@@ -49,7 +49,6 @@ pub struct Cli {
     )]
     migration_dir: PathBuf,
 
-    #[cfg(feature = "qdrant-backend")]
     #[arg(
         global = true,
         short = 'k',
@@ -87,7 +86,13 @@ where
         .database_url
         .expect("Environment variable 'DATABASE_URL' not set");
 
-    let mut context = crate::context::Context::new(Backend::new(&database_url, cli.api_key)?);
+    #[cfg(feature = "qdrant-backend")]
+    let api_key = cli.api_key;
+
+    #[cfg(not(feature = "qdrant-backend"))]
+    let api_key = None;
+
+    let mut context = crate::context::Context::new(Backend::new(&database_url, api_key)?);
 
     #[cfg(feature = "sea-backend")]
     if let Some(database_url) = cli.sql_database_url {
@@ -114,13 +119,10 @@ where
             )
             .await?
         }
-        Some(MigrateSubcommands::Generate {
-            migration_name,
-            message,
-        }) => {
+        Some(MigrateSubcommands::Generate { name, message }) => {
             create_new_revision(
                 migration_dir,
-                &migration_name,
+                name.as_ref(),
                 M::latest_revision()?.revision().revision,
                 message.as_deref(),
             )
