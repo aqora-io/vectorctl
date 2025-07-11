@@ -2,9 +2,12 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use rand::{TryRngCore, rand_core::OsError, rngs::OsRng};
 use std::path::{Path, PathBuf};
-use template::{MigrationTemplate, RenderError, revision::RevisionTemplate};
+use template::{
+    MigrationTemplate, RenderError, migrator::MigratorTemplate, revision::RevisionTemplate,
+};
 use thiserror::Error;
 use tokio::fs;
+use tokio_stream::{StreamExt, wrappers::ReadDirStream};
 
 pub const REVISION_PREFIX: &str = "version";
 const DATE_FMT: &str = "%Y-%m-%dT%H:%M:%S";
@@ -70,6 +73,27 @@ async fn render_revision(
     Ok(())
 }
 
+async fn render_migrator(dir: impl AsRef<Path>) -> Result<()> {
+    let source_dir = src_dir(dir);
+    let stems: Vec<String> = ReadDirStream::new(fs::read_dir(&source_dir).await?)
+        .filter_map(|item| {
+            item.ok()?
+                .path()
+                .file_name()
+                .and_then(|stem| stem.to_str())
+                .filter(|name| name.starts_with(REVISION_PREFIX) && name.ends_with(".rs"))
+                .map(|name| name.trim_end_matches(".rs").to_owned())
+        })
+        .collect()
+        .await;
+
+    MigratorTemplate::builder()
+        .imports(stems)
+        .render(source_dir)?;
+
+    Ok(())
+}
+
 struct Backup(PathBuf);
 impl Backup {
     async fn new(p: impl AsRef<Path>) -> Result<Self> {
@@ -97,7 +121,8 @@ pub async fn init(
         builer.rust_edition(rust_edition);
     }
     builer.render(&migration_dir)?;
-    render_revision(migration_dir, "init_migration", None, None).await
+    render_revision(&migration_dir, "init_migration", None, None).await?;
+    render_migrator(migration_dir).await
 }
 
 pub async fn create_new_revision(
@@ -108,7 +133,8 @@ pub async fn create_new_revision(
 ) -> Result<()> {
     let migrator = src_dir(&migration_dir).join(MIGRATOR_FILENAME);
     let backup = Backup::new(&migrator).await?;
-    render_revision(migration_dir, name, Some(down_rev), message).await?;
+    render_revision(&migration_dir, name, Some(down_rev), message).await?;
+    render_migrator(migration_dir).await?;
     backup.commit().await
 }
 

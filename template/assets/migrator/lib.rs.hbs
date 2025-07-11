@@ -1,10 +1,12 @@
-mod version_20250522_145910_init_migration;
+{{#each imports}}
+mod {{this}};
+{{/each}}
 
 pub struct Migrator;
 
 #[async_trait::async_trait]
 impl vectorctl::MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn vectorctl::MigrationTrait>> {
-        vec![Box::new(version_20250522_145910_init_migration::Migration)]
+        vec![{{#each imports}}Box::new({{this}}::Migration){{#if @last}}{{else}},{{/if}}{{/each}}]
     }
 }
