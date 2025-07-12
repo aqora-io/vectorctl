@@ -16,21 +16,26 @@ const MIGRATOR_FILENAME: &str = "lib.rs";
 
 #[derive(Debug, Error)]
 pub enum MigrateError {
-    #[error(transparent)]
+    #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error(transparent)]
+    #[error("Syntax parsing failed: {0}")]
     Parser(#[from] syn::Error),
-    #[error(transparent)]
+    #[error("Secure RNG failed: {0}")]
     OsRng(#[from] OsError),
-    #[error(transparent)]
+    #[error("Template rendering failed: {0}")]
     Render(#[from] RenderError),
 }
+
 type Result<T> = std::result::Result<T, MigrateError>;
 
 fn revision_id() -> Result<String> {
     let mut bytes = [0u8; 8];
     OsRng.try_fill_bytes(&mut bytes)?;
-    Ok(URL_SAFE_NO_PAD.encode(bytes).replace('-', "_"))
+    Ok(URL_SAFE_NO_PAD
+        .encode(bytes)
+        .chars()
+        .filter(|c| c.is_alphabetic())
+        .collect())
 }
 
 fn filename(stem: &str) -> String {
@@ -94,7 +99,9 @@ async fn render_migrator(dir: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug)]
 struct Backup(PathBuf);
+
 impl Backup {
     async fn new(p: impl AsRef<Path>) -> Result<Self> {
         let orig = p.as_ref().to_owned();
@@ -197,7 +204,7 @@ mod tests {
     proptest! {
         #[test]
         fn prop_base64(buf in any::<[u8;8]>()) {
-            let enc = URL_SAFE_NO_PAD.encode(buf).replace('-', "_");
+            let enc = URL_SAFE_NO_PAD.encode(buf).chars().filter(|c| c.is_alphabetic()).collect::<String>();
             prop_assert_eq!(enc.len(), 11);
             prop_assert!(id_re().is_match(&enc));
         }

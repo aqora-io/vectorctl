@@ -62,7 +62,7 @@ impl RevisionGraph {
         });
         let head_ix = nodes
             .iter()
-            .position(|n| n.children.is_empty())
+            .position(|Node { children, .. }| children.is_empty())
             .ok_or_else(|| RevisionGraphError::NotFound("head".into()))?;
 
         Ok(Self {
@@ -115,8 +115,8 @@ impl RevisionGraph {
 
     pub fn get(&self, rev: &str) -> Option<(Option<Uuid>, &dyn MigrationTrait)> {
         self.ix(rev).map(|ix| {
-            let node = &self.nodes[ix];
-            (node.migration.id, node.migration.runner.as_ref())
+            let Node { migration, .. } = &self.nodes[ix];
+            (migration.id, migration.runner.as_ref())
         })
     }
 }

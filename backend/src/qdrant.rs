@@ -120,11 +120,10 @@ impl LedgerTrait for Ledger {
         let points = ids
             .into_iter()
             .map(|id| {
-                let payload = Payload {
+                PointStruct::try_from(Payload {
                     name: id,
                     applied_at: now,
-                };
-                PointStruct::try_from(payload)
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
 

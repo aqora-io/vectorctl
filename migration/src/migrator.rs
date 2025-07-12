@@ -1,6 +1,6 @@
 use crate::{
     ContextError, MigrationTrait,
-    revision::{RevisionGraph, RevisionGraphError},
+    revision::{Node, RevisionGraph, RevisionGraphError},
 };
 use backend::generic::{LedgerTrait, VectorTrait};
 use futures::future::join_all;
@@ -94,11 +94,11 @@ pub trait MigratorTrait: Send {
         graph
             .forward_path(Some(graph.head()), graph.queue())
             .into_iter()
-            .for_each(|revivion| {
+            .for_each(|Node { migration, .. }| {
                 println!(
                     "Migration `{}`, status: `{}`",
-                    revivion.migration.runner.name(),
-                    revivion.migration.status,
+                    migration.runner.name(),
+                    migration.status,
                 )
             });
 
@@ -150,13 +150,13 @@ pub trait MigratorTrait: Send {
 
         let iterator = path
             .into_iter()
-            .filter(|revision| match direction {
-                Direction::Up => revision.migration.status == MigrationStatus::Pending,
+            .filter(|Node { migration, .. }| match direction {
+                Direction::Up => migration.status == MigrationStatus::Pending,
                 Direction::Down | Direction::Refresh => {
-                    revision.migration.status == MigrationStatus::Applied
+                    migration.status == MigrationStatus::Applied
                 }
             })
-            .filter_map(|revision| graph.get(&revision.revision));
+            .filter_map(|Node { revision, .. }| graph.get(revision));
 
         match direction {
             Direction::Up | Direction::Refresh => {
