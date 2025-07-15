@@ -40,7 +40,7 @@ impl Debug for Resource {
 }
 
 #[cfg(feature = "qdrant-backend")]
-pub type Backend = backend::Qdrant;
+pub type Backend = vectorctl_backend::Qdrant;
 
 #[cfg(not(any(feature = "qdrant-backend")))]
 compile_error!(

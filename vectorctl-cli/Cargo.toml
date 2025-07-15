@@ -1,11 +1,11 @@
 [package]
-name = "cli"
+name = "vectorctl-cli"
 version = "0.1.0"
 edition = "2024"
-publish = false
+license-file = "../LICENSE"
 
 [dependencies]
-template = { path = "../template" }
+vectorctl-template = { path = "../vectorctl-template" }
 syn = { version = "2", default-features = false, features = [
   "full",
   "parsing",
@@ -21,7 +21,7 @@ base64 = "0.22"
 rand = { version = "0.9", features = ["os_rng"] }
 
 [lib]
-name = "cli"
+name = "vectorctl_cli"
 path = "src/lib.rs"
 
 [[bin]]

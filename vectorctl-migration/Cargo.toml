@@ -1,12 +1,16 @@
 [package]
-name = "migration"
+name = "vectorctl-migration"
 version = "0.1.0"
 edition = "2024"
-publish = false
+license-file = "../LICENSE"
+
+[lib]
+name = "vectorctl_migration"
+path = "src/lib.rs"
 
 [dependencies]
-cli = { path = "../cli" }
-backend = { path = "../backend" }
+vectorctl-cli = { path = "../vectorctl-cli" }
+vectorctl-backend = { path = "../vectorctl-backend" }
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 qdrant-client = { version = "1.14", features = ["serde"], optional = true }
@@ -24,5 +28,5 @@ tinyvec = "*"
 
 [features]
 default = ["qdrant-backend"]
-qdrant-backend = ["backend/qdrant-backend"]
+qdrant-backend = ["vectorctl-backend/qdrant-backend"]
 sea-backend = ["sea-orm/runtime-tokio-rustls", "sea-orm/sqlx-postgres"]

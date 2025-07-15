@@ -2,12 +2,12 @@ use crate::{
     ContextError, MigrationTrait,
     revision::{Node, RevisionGraph, RevisionGraphError},
 };
-use backend::generic::{LedgerTrait, VectorTrait};
 use futures::future::join_all;
 use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 use thiserror::Error;
 use uuid::Uuid;
+use vectorctl_backend::generic::{LedgerTrait, VectorTrait};
 
 static GRAPH: OnceCell<RevisionGraph> = OnceCell::new();
 
@@ -22,7 +22,7 @@ pub enum MigrationError {
     #[error(transparent)]
     Context(#[from] ContextError),
     #[error(transparent)]
-    VectorBackend(#[from] backend::generic::VectorBackendError),
+    VectorBackend(#[from] vectorctl_backend::generic::VectorBackendError),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

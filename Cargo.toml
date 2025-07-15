@@ -9,28 +9,32 @@ license-file = "LICENSE"
 
 resolver = "2"
 members = [
-  "backend",
-  "cli",
-  "macros",
-  "migration",
-  "template",
+  ".",
+  "vectorctl-backend",
+  "vectorctl-macros",
+  "vectorctl-migration",
+  "vectorctl-cli",
+  "vectorctl-template",
   "examples/qdrant_example",
 ]
-default-members = ["macros", "migration", "template", "."]
+default-members = ["vectorctl-macros", "vectorctl-template", "."]
 
 
 [dependencies]
-backend = { path = "backend", optional = true, default-features = false }
-cli = { path = "cli", optional = true, default-features = false }
-macros = { path = "macros", optional = true }
-migration = { path = "migration", optional = true, default-features = false }
+vectorctl-backend = { path = "vectorctl-backend", optional = true, default-features = false }
+vectorctl-cli = { path = "vectorctl-cli", optional = true, default-features = false }
+vectorctl-macros = { path = "vectorctl-macros", optional = true }
+vectorctl-migration = { path = "vectorctl-migration", optional = true, default-features = false }
 
 [features]
 default = []
 
-qdrant-backend = ["backend/qdrant-backend", "migration/qdrant-backend"]
-sea-backend = ["migration/sea-backend"]
+qdrant-backend = [
+  "vectorctl-backend/qdrant-backend",
+  "vectorctl-migration/qdrant-backend",
+]
+sea-backend = ["vectorctl-migration/sea-backend"]
 
-cli = ["dep:cli"]
-macros = ["dep:macros"]
-migration = ["dep:migration"]
+cli = ["dep:vectorctl-cli"]
+macros = ["dep:vectorctl-macros"]
+migration = ["dep:vectorctl-migration"]

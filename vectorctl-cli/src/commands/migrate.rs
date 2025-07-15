@@ -2,7 +2,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use rand::{TryRngCore, rand_core::OsError, rngs::OsRng};
 use std::path::{Path, PathBuf};
-use template::{
+use vectorctl_template::{
     MigrationTemplate, RenderError, migrator::MigratorTemplate, revision::RevisionTemplate,
 };
 use thiserror::Error;

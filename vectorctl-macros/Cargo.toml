@@ -1,8 +1,8 @@
 [package]
-name = "macros"
+name = "vectorctl-macros"
 version = "0.1.0"
 edition = "2024"
-publish = false
+license-file = "../LICENSE"
 
 [dependencies]
 lazy-regex = { version = "3.4.1", features = ["perf"] }
@@ -11,5 +11,6 @@ quote = "1.0.40"
 syn = "2.0.101"
 
 [lib]
+name = "vectorctl_macros"
 path = "src/lib.rs"
 proc-macro = true

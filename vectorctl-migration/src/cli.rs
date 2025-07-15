@@ -1,11 +1,11 @@
 use std::{any::Any, path::PathBuf};
 
-use backend::generic::{VectorBackendError, VectorTrait};
 use clap::Parser;
-use cli::commands::{MigrateError, MigrateSubcommands, create_new_revision, init};
 #[cfg(feature = "sea-backend")]
 use sea_orm::{ConnectOptions, Database, DbConn, DbErr};
 use thiserror::Error;
+use vectorctl_backend::generic::{VectorBackendError, VectorTrait};
+use vectorctl_cli::commands::{MigrateError, MigrateSubcommands, create_new_revision, init};
 
 use crate::{
     context::Backend,
