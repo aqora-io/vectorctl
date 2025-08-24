@@ -28,5 +28,9 @@ tinyvec = "*"
 
 [features]
 default = ["qdrant-backend"]
-qdrant-backend = ["vectorctl-backend/qdrant-backend"]
-sea-backend = ["sea-orm/runtime-tokio-rustls", "sea-orm/sqlx-postgres"]
+qdrant-backend = ["dep:qdrant-client", "vectorctl-backend/qdrant-backend"]
+sea-backend = [
+  "dep:sea-orm",
+  "sea-orm/runtime-tokio-rustls",
+  "sea-orm/sqlx-postgres",
+]

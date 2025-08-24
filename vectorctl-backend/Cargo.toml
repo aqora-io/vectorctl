@@ -19,4 +19,9 @@ thiserror = "2.0"
 
 [features]
 
-qdrant-backend = ["qdrant-client", "serde_json", "serde", "chrono"]
+qdrant-backend = [
+  "dep:qdrant-client",
+  "dep:serde_json",
+  "dep:serde",
+  "dep:chrono",
+]

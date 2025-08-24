@@ -30,6 +30,7 @@ vectorctl-migration = { path = "vectorctl-migration", optional = true, default-f
 default = []
 
 qdrant-backend = [
+  "dep:vectorctl-backend",
   "vectorctl-backend/qdrant-backend",
   "vectorctl-migration/qdrant-backend",
 ]
