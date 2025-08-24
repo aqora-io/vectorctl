@@ -51,6 +51,10 @@ pub enum MigrateSubcommands {
         #[arg(long, required = false)]
         to: Option<String>,
     },
+    #[command()]
+    Refresh,
+    #[command()]
+    Reset,
     #[command(about = "Get migration status")]
     Status,
 }
@@ -77,7 +81,9 @@ pub async fn run_migrate_command(
         sub @ Some(MigrateSubcommands::Generate { .. })
         | sub @ Some(MigrateSubcommands::Up { .. })
         | sub @ Some(MigrateSubcommands::Down { .. })
-        | sub @ Some(MigrateSubcommands::Status) => {
+        | sub @ Some(MigrateSubcommands::Status)
+        | sub @ Some(MigrateSubcommands::Refresh)
+        | sub @ Some(MigrateSubcommands::Reset) => {
             let (cmd_str, extra_args) = match sub {
                 Some(MigrateSubcommands::Generate { name, message }) => ("generate", {
                     let mut args = vec![name];
@@ -100,6 +106,8 @@ pub async fn run_migrate_command(
                         .collect(),
                 ),
                 Some(MigrateSubcommands::Status) => ("status", vec![]),
+                Some(MigrateSubcommands::Refresh) => ("refresh", vec![]),
+                Some(MigrateSubcommands::Reset) => ("reset", vec![]),
                 _ => ("up", vec![]),
             };
 

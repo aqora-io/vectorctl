@@ -130,6 +130,8 @@ where
         }
         Some(MigrateSubcommands::Up { to }) => M::up(&context, to).await?,
         Some(MigrateSubcommands::Down { to }) => M::down(&context, to).await?,
+        Some(MigrateSubcommands::Refresh) => M::refresh(&context).await?,
+        Some(MigrateSubcommands::Reset) => M::reset(&context).await?,
         Some(MigrateSubcommands::Status) => M::status(&context).await?,
         None => M::up(&context, None).await?,
     }
