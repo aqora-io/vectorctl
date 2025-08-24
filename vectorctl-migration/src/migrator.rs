@@ -2,7 +2,6 @@ use crate::{
     ContextError, MigrationTrait,
     revision::{Node, RevisionGraph, RevisionGraphError},
 };
-use futures::future::join_all;
 use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -23,6 +22,11 @@ pub enum MigrationError {
     Context(#[from] ContextError),
     #[error(transparent)]
     VectorBackend(#[from] vectorctl_backend::generic::VectorBackendError),
+    #[cfg(feature = "sea-backend")]
+    #[error(transparent)]
+    Db(#[from] sea_orm::DbErr),
+    #[error("Other {0}")]
+    Other(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -156,33 +160,31 @@ pub trait MigratorTrait: Send {
                     migration.status == MigrationStatus::Applied
                 }
             })
-            .filter_map(|Node { revision, .. }| graph.get(revision));
+            .map(|Node { migration, .. }| (migration.id, migration.runner.as_ref()));
 
         match direction {
             Direction::Up | Direction::Refresh => {
-                let ids = join_all(iterator.map(|(_, migration)| async move {
-                    migration.up(ctx).await.map(|_| migration.name())
-                }))
-                .await
-                .into_iter()
-                .collect::<Result<Vec<_>, _>>()?;
+                let ids =
+                    futures::future::try_join_all(iterator.map(|(_, migration)| async move {
+                        migration.up(ctx).await.map(|_| migration.name())
+                    }))
+                    .await?;
                 if !ids.is_empty() {
                     ledger.insert_many(ids).await?;
                 }
             }
             Direction::Down => {
-                let ids = join_all(iterator.map(|(id_opt, migration)| async move {
-                    let id = id_opt.ok_or_else(|| {
-                        MigrationError::Graph(RevisionGraphError::NotFound(format!(
-                            "{:?}",
-                            migration.name()
-                        )))
-                    })?;
-                    migration.down(ctx).await.map(|_| id)
-                }))
-                .await
-                .into_iter()
-                .collect::<Result<Vec<_>, _>>()?;
+                let ids =
+                    futures::future::try_join_all(iterator.map(|(id_opt, migration)| async move {
+                        let id = id_opt.ok_or_else(|| {
+                            MigrationError::Graph(RevisionGraphError::NotFound(format!(
+                                "{:?}",
+                                migration.name()
+                            )))
+                        })?;
+                        migration.down(ctx).await.map(|_| id)
+                    }))
+                    .await?;
                 if !ids.is_empty() {
                     ledger.delete_many(ids).await?;
                 }
