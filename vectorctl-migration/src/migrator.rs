@@ -2,7 +2,9 @@ use crate::{
     ContextError, MigrationTrait,
     revision::{Node, RevisionGraph, RevisionGraphError},
 };
+use atty::Stream;
 use once_cell::sync::OnceCell;
+use owo_colors::OwoColorize;
 use std::collections::HashMap;
 use thiserror::Error;
 use uuid::Uuid;
@@ -95,15 +97,52 @@ pub trait MigratorTrait: Send {
         ledger.ensure().await?;
 
         let graph = Self::build_graph(&ledger.retrieve().await?)?;
+
+        let use_colors = atty::is(Stream::Stdout) && std::env::var_os("NO_COLOR").is_none();
+
         graph
             .forward_path(Some(graph.head()), graph.queue())
             .into_iter()
             .for_each(|Node { migration, .. }| {
-                println!(
-                    "Migration `{}`, status: `{}`",
-                    migration.runner.name(),
-                    migration.status,
-                )
+                let status_str = match migration.status {
+                    MigrationStatus::Applied => {
+                        let text = "Applied";
+                        if use_colors {
+                            text.green().bold().to_string()
+                        } else {
+                            text.to_string()
+                        }
+                    }
+                    MigrationStatus::Pending => {
+                        let text = "Pending";
+                        if use_colors {
+                            text.yellow().bold().to_string()
+                        } else {
+                            text.to_string()
+                        }
+                    }
+                };
+
+                let message = migration
+                    .runner
+                    .revision()
+                    .message
+                    .map(|message| {
+                        if use_colors {
+                            format!(" — {}", message.dimmed().italic())
+                        } else {
+                            format!(" — {}", message)
+                        }
+                    })
+                    .unwrap_or_default();
+
+                let name = if use_colors {
+                    migration.runner.name().blue().bold().to_string()
+                } else {
+                    migration.runner.name().to_string()
+                };
+
+                println!("{:<20} | {}{}", name, status_str, message);
             });
 
         Ok(())
@@ -187,14 +226,32 @@ where
     let ledger = ctx.backend.ledger();
     ledger.ensure().await?;
 
-    let ids = futures::future::try_join_all(iterator.map(|(id_opt, migration)| async move {
-        let id = id_opt.ok_or_else(|| {
-            MigrationError::Graph(RevisionGraphError::NotFound(format!(
-                "{:?}",
-                migration.name()
-            )))
-        })?;
-        migration.down(ctx).await.map(|_| id)
+    let use_colors = atty::is(Stream::Stdout) && std::env::var_os("NO_COLOR").is_none();
+
+    let ids = futures::future::try_join_all(iterator.map(|(id_opt, migration)| {
+        let name = migration.name();
+        async move {
+            let message = format!("Running down: {}", name);
+            if use_colors {
+                println!("{}", message.yellow().bold());
+            } else {
+                println!("{message}");
+            }
+
+            let id = id_opt.ok_or_else(|| {
+                MigrationError::Graph(RevisionGraphError::NotFound(format!("{:?}", name)))
+            })?;
+
+            migration.down(ctx).await.map(|_| {
+                let message = format!("Rolled back: {}", name);
+                if use_colors {
+                    println!("{}", message.green().bold());
+                } else {
+                    println!("{message}");
+                }
+                id
+            })
+        }
     }))
     .await?;
 
@@ -212,11 +269,30 @@ where
     let ledger = ctx.backend.ledger();
     ledger.ensure().await?;
 
-    let ids =
-        futures::future::try_join_all(iterator.map(|(_, migration)| async move {
-            migration.up(ctx).await.map(|_| migration.name())
-        }))
-        .await?;
+    let use_colors = atty::is(Stream::Stdout) && std::env::var_os("NO_COLOR").is_none();
+
+    let ids = futures::future::try_join_all(iterator.map(|(_, migration)| {
+        let name = migration.name();
+        async move {
+            let message = format!("Applying: {}", name);
+            if use_colors {
+                println!("{}", message.yellow().bold());
+            } else {
+                println!("{message}");
+            }
+
+            migration.up(ctx).await.map(|_| {
+                let message = format!("Applied: {}", name);
+                if use_colors {
+                    println!("{}", message.green().bold());
+                } else {
+                    println!("{message}");
+                }
+                name
+            })
+        }
+    }))
+    .await?;
 
     if !ids.is_empty() {
         ledger.insert_many(ids).await?;
