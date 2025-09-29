@@ -72,20 +72,18 @@ impl RevisionTemplateBuilder {
             return Err("revision_id is required".into());
         }
 
-        if let Some(Some(down_revision_id)) = self.down_revision_id.as_ref() {
-            if !REVISION_ID_REGEX.is_match(down_revision_id) {
+        if let Some(Some(down_revision_id)) = self.down_revision_id.as_ref()
+            && !REVISION_ID_REGEX.is_match(down_revision_id) {
                 return Err(format!(
                     "down_revision_id `{}` may only contain letters, numbers, dashes or underscores",
                     down_revision_id
                 ));
             }
-        }
 
-        if let Some(Some(message)) = self.message.as_ref() {
-            if message.trim().is_empty() {
+        if let Some(Some(message)) = self.message.as_ref()
+            && message.trim().is_empty() {
                 return Err("message cannot be empty".into());
             }
-        }
 
         Ok(())
     }

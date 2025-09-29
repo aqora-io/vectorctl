@@ -55,12 +55,11 @@ impl RevisionGraph {
                 });
             });
         (0..nodes.len()).for_each(|ix| {
-            if let Some(parent_rev) = nodes[ix].migration.runner.revision().down_revision {
-                if let Some(&p_ix) = index.get(parent_rev) {
+            if let Some(parent_rev) = nodes[ix].migration.runner.revision().down_revision
+                && let Some(&p_ix) = index.get(parent_rev) {
                     nodes[ix].parent = Some(p_ix);
                     nodes[p_ix].children.push(ix);
                 }
-            }
         });
         let queue_ix = nodes
             .iter()
