@@ -145,11 +145,11 @@ pub trait MigratorTrait: Send {
         let graph = Self::build_graph(&applied)?;
         let path = match direction {
             Direction::Up => graph.forward_path(
-                Some(from.unwrap_or(graph.queue())),
-                to.unwrap_or(graph.head()),
+                Some(from.unwrap_or(graph.head())),
+                to.unwrap_or(graph.queue()),
             ),
-            Direction::Down => graph.backward_path(Some(graph.head()), to),
-            Direction::Refresh => graph.backward_path(Some(graph.head()), None),
+            Direction::Down => graph.backward_path(Some(graph.queue()), to),
+            Direction::Refresh => graph.backward_path(Some(graph.queue()), None),
         };
 
         let iterator = path
@@ -163,34 +163,64 @@ pub trait MigratorTrait: Send {
             .map(|Node { migration, .. }| (migration.id, migration.runner.as_ref()));
 
         match direction {
-            Direction::Up | Direction::Refresh => {
-                let ids =
-                    futures::future::try_join_all(iterator.map(|(_, migration)| async move {
-                        migration.up(ctx).await.map(|_| migration.name())
-                    }))
-                    .await?;
-                if !ids.is_empty() {
-                    ledger.insert_many(ids).await?;
-                }
+            Direction::Up => {
+                run_up(ctx, iterator).await?;
             }
             Direction::Down => {
-                let ids =
-                    futures::future::try_join_all(iterator.map(|(id_opt, migration)| async move {
-                        let id = id_opt.ok_or_else(|| {
-                            MigrationError::Graph(RevisionGraphError::NotFound(format!(
-                                "{:?}",
-                                migration.name()
-                            )))
-                        })?;
-                        migration.down(ctx).await.map(|_| id)
-                    }))
-                    .await?;
-                if !ids.is_empty() {
-                    ledger.delete_many(ids).await?;
-                }
+                run_down(ctx, iterator).await?;
+            }
+            Direction::Refresh => {
+                let collected: Vec<_> = iterator.collect();
+                run_down(ctx, collected.iter().cloned()).await?;
+                run_up(ctx, collected.into_iter()).await?;
             }
         };
 
         Ok(())
     }
+}
+
+async fn run_down<'a, I>(ctx: &crate::context::Context, iterator: I) -> Result<(), MigrationError>
+where
+    I: Iterator<Item = (Option<Uuid>, &'a dyn MigrationTrait)> + Send,
+{
+    let ledger = ctx.backend.ledger();
+    ledger.ensure().await?;
+
+    let ids = futures::future::try_join_all(iterator.map(|(id_opt, migration)| async move {
+        let id = id_opt.ok_or_else(|| {
+            MigrationError::Graph(RevisionGraphError::NotFound(format!(
+                "{:?}",
+                migration.name()
+            )))
+        })?;
+        migration.down(ctx).await.map(|_| id)
+    }))
+    .await?;
+
+    if !ids.is_empty() {
+        ledger.delete_many(ids).await?;
+    }
+
+    Ok(())
+}
+
+async fn run_up<'a, I>(ctx: &crate::context::Context, iterator: I) -> Result<(), MigrationError>
+where
+    I: Iterator<Item = (Option<Uuid>, &'a dyn MigrationTrait)> + Send,
+{
+    let ledger = ctx.backend.ledger();
+    ledger.ensure().await?;
+
+    let ids =
+        futures::future::try_join_all(iterator.map(|(_, migration)| async move {
+            migration.up(ctx).await.map(|_| migration.name())
+        }))
+        .await?;
+
+    if !ids.is_empty() {
+        ledger.insert_many(ids).await?;
+    }
+
+    Ok(())
 }
