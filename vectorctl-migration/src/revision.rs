@@ -29,8 +29,10 @@ pub struct Node {
 pub struct RevisionGraph {
     nodes: Vec<Node>,
     index: HashMap<Revision, Ix>,
-    /// index of the latest revision
+    /// index of the first revision
     head_ix: Ix,
+    /// index of the latest revision
+    queue_ix: Ix,
 }
 
 impl RevisionGraph {
@@ -60,15 +62,21 @@ impl RevisionGraph {
                 }
             }
         });
-        let head_ix = nodes
+        let queue_ix = nodes
             .iter()
             .position(|Node { children, .. }| children.is_empty())
+            .ok_or_else(|| RevisionGraphError::NotFound("queue".into()))?;
+
+        let head_ix = nodes
+            .iter()
+            .position(|Node { parent, .. }| parent.is_none())
             .ok_or_else(|| RevisionGraphError::NotFound("head".into()))?;
 
         Ok(Self {
             nodes,
             index,
             head_ix,
+            queue_ix,
         })
     }
 
@@ -89,7 +97,7 @@ impl RevisionGraph {
     }
 
     pub fn queue(&self) -> &str {
-        self.nodes[0].revision.as_ref()
+        self.nodes[self.queue_ix].revision.as_ref()
     }
 
     pub fn forward_path(&self, current: Option<&str>, target: &str) -> Vec<&Node> {
@@ -185,8 +193,8 @@ mod tests {
 
         let graph = RevisionGraph::try_from(migrations).expect("graph should be created");
 
-        assert_eq!(graph.queue(), "a");
-        assert_eq!(graph.head(), "c");
+        assert_eq!(graph.queue(), "c");
+        assert_eq!(graph.head(), "a");
 
         let forward = graph.forward_path(Some("a"), "c");
         assert_eq!(
