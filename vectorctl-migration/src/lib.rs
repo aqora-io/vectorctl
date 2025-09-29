@@ -26,7 +26,7 @@ pub struct Revision<'a> {
 
 pub trait MigrationMeta {
     fn name(&self) -> String;
-    fn revision(&self) -> Revision;
+    fn revision(&self) -> Revision<'_>;
 }
 
 #[async_trait::async_trait]
