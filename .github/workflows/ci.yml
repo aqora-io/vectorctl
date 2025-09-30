@@ -22,5 +22,6 @@ jobs:
       - run: rustup component add rustfmt clippy
       - run: rustc --version
       - run: cargo fmt --all --check
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo deny check all
       - run: cargo test
