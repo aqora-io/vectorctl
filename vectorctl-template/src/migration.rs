@@ -40,19 +40,22 @@ impl MigrationTemplate {
 impl MigrationTemplateBuilder {
     fn validate(&self) -> Result<(), String> {
         if let Some(version) = self.version.as_ref()
-            && !SEMVER_REGEX.is_match(version) {
-                return Err(format!("Invalid version: {}", version));
-            }
+            && !SEMVER_REGEX.is_match(version)
+        {
+            return Err(format!("Invalid version: {}", version));
+        }
 
         if let Some(package_name) = self.package_name.as_ref()
-            && !STRING_REGEX.is_match(package_name) {
-                return Err(format!("Invalid package_name: {}", package_name));
-            }
+            && !STRING_REGEX.is_match(package_name)
+        {
+            return Err(format!("Invalid package_name: {}", package_name));
+        }
 
         if let Some(rust_edition) = self.rust_edition.as_ref()
-            && !STRING_REGEX.is_match(rust_edition) {
-                return Err(format!("Invalid rust edition: {}", rust_edition));
-            }
+            && !STRING_REGEX.is_match(rust_edition)
+        {
+            return Err(format!("Invalid rust edition: {}", rust_edition));
+        }
 
         Ok(())
     }
