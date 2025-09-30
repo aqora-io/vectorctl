@@ -8,6 +8,7 @@ publish = false
 async-trait = "0.1"
 tokio = "1.45.0"
 qdrant-client = "1.14.0"
+anyhow = "1"
 
 [dependencies.vectorctl]
 path = "../../"
