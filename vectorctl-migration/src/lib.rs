@@ -5,7 +5,8 @@ mod revision;
 
 use std::fmt::Debug;
 
-pub use cli::{CliError as CliMigrationError, run_migrate};
+pub use clap::Parser;
+pub use cli::{Cli, CliError as CliMigrationError, run_migrate};
 pub use context::{Backend, Context, ContextError, Resource};
 pub use migrator::{MigrationError, MigratorTrait};
 

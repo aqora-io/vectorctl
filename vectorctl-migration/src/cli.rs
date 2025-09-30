@@ -1,16 +1,11 @@
-use std::{any::Any, path::PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
-#[cfg(feature = "sea-backend")]
-use sea_orm::{ConnectOptions, Database, DbConn, DbErr};
 use thiserror::Error;
-use vectorctl_backend::generic::{VectorBackendError, VectorTrait};
+use vectorctl_backend::generic::VectorBackendError;
 use vectorctl_cli::commands::{MigrateError, MigrateSubcommands, create_new_revision, init};
 
-use crate::{
-    context::Backend,
-    migrator::{MigrationError, MigratorTrait},
-};
+use crate::migrator::{MigrationError, MigratorTrait};
 
 #[derive(Error, Debug)]
 pub enum CliError {
@@ -22,9 +17,6 @@ pub enum CliError {
     Context(#[from] crate::context::ContextError),
     #[error(transparent)]
     Backend(#[from] VectorBackendError),
-    #[cfg(feature = "sea-backend")]
-    #[error(transparent)]
-    Db(#[from] DbErr),
 }
 
 #[derive(Parser)]
@@ -38,7 +30,7 @@ pub struct Cli {
         help = "vector database URL",
         default_value = "http://localhost:6334"
     )]
-    database_url: Option<String>,
+    pub database_url: String,
 
     #[arg(
         global = true,
@@ -56,7 +48,7 @@ pub struct Cli {
         help = "database api key",
         env = "DATABASE_API_KEY"
     )]
-    api_key: Option<String>,
+    pub api_key: Option<String>,
 
     #[cfg(feature = "sea-backend")]
     #[arg(
@@ -65,47 +57,19 @@ pub struct Cli {
         env = "SQL_DATABASE_URL",
         help = "sql database URL"
     )]
-    sql_database_url: Option<String>,
+    pub sql_database_url: Option<String>,
 
     #[command(subcommand)]
-    command: Option<MigrateSubcommands>,
+    pub command: Option<MigrateSubcommands>,
 }
 
-pub async fn run_migrate<M>(
-    _: M,
-    resources: Option<Vec<Box<dyn Any + 'static + Send + Sync>>>,
-) -> Result<(), CliError>
+pub async fn run_migrate<M>(_: M, context: &crate::context::Context) -> Result<(), CliError>
 where
     M: MigratorTrait,
 {
     let cli = Cli::parse();
 
     let migration_dir = cli.migration_dir;
-
-    let database_url = cli
-        .database_url
-        .expect("Environment variable 'DATABASE_URL' not set");
-
-    #[cfg(feature = "qdrant-backend")]
-    let api_key = cli.api_key;
-
-    #[cfg(not(feature = "qdrant-backend"))]
-    let api_key = None;
-
-    let mut context = crate::context::Context::new(Backend::new(&database_url, api_key)?);
-
-    #[cfg(feature = "sea-backend")]
-    if let Some(database_url) = cli.sql_database_url {
-        let db_conn = {
-            let connect_opts = ConnectOptions::from(database_url);
-            Database::connect(connect_opts).await?
-        };
-        context.insert_resource::<DbConn>(db_conn);
-    }
-
-    if let Some(resources) = resources {
-        context.insert_resources(resources);
-    };
 
     match cli.command {
         Some(MigrateSubcommands::Init {
@@ -128,12 +92,12 @@ where
             )
             .await?
         }
-        Some(MigrateSubcommands::Up { to }) => M::up(&context, to).await?,
-        Some(MigrateSubcommands::Down { to }) => M::down(&context, to).await?,
-        Some(MigrateSubcommands::Refresh) => M::refresh(&context).await?,
-        Some(MigrateSubcommands::Reset) => M::reset(&context).await?,
-        Some(MigrateSubcommands::Status) => M::status(&context).await?,
-        None => M::up(&context, None).await?,
+        Some(MigrateSubcommands::Up { to }) => M::up(context, to).await?,
+        Some(MigrateSubcommands::Down { to }) => M::down(context, to).await?,
+        Some(MigrateSubcommands::Refresh) => M::refresh(context).await?,
+        Some(MigrateSubcommands::Reset) => M::reset(context).await?,
+        Some(MigrateSubcommands::Status) => M::status(context).await?,
+        None => M::up(context, None).await?,
     }
     Ok(())
 }
