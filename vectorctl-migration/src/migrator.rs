@@ -2,10 +2,9 @@ use crate::{
     ContextError, MigrationTrait,
     revision::{Node, RevisionGraph, RevisionGraphError},
 };
-use atty::Stream;
 use once_cell::sync::OnceCell;
 use owo_colors::OwoColorize;
-use std::collections::HashMap;
+use std::{collections::HashMap, io::IsTerminal};
 use thiserror::Error;
 use uuid::Uuid;
 use vectorctl_backend::generic::{LedgerTrait, VectorTrait};
@@ -98,7 +97,7 @@ pub trait MigratorTrait: Send {
 
         let graph = Self::build_graph(&ledger.retrieve().await?)?;
 
-        let use_colors = atty::is(Stream::Stdout) && std::env::var_os("NO_COLOR").is_none();
+        let use_colors = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
 
         graph
             .forward_path(Some(graph.head()), graph.queue())
@@ -226,7 +225,7 @@ where
     let ledger = ctx.backend.ledger();
     ledger.ensure().await?;
 
-    let use_colors = atty::is(Stream::Stdout) && std::env::var_os("NO_COLOR").is_none();
+    let use_colors = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
 
     let ids = futures::future::try_join_all(iterator.map(|(id_opt, migration)| {
         let name = migration.name();
@@ -269,7 +268,7 @@ where
     let ledger = ctx.backend.ledger();
     ledger.ensure().await?;
 
-    let use_colors = atty::is(Stream::Stdout) && std::env::var_os("NO_COLOR").is_none();
+    let use_colors = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
 
     let ids = futures::future::try_join_all(iterator.map(|(_, migration)| {
         let name = migration.name();
