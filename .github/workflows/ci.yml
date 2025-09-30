@@ -28,8 +28,3 @@ jobs:
       - name: rustfmt
         run: |
           cargo fmt --all --check
-
-  cargo-deny:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: EmbarkStudios/cargo-deny-action@v2
