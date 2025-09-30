@@ -33,7 +33,3 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          rust-version: "1.89.0"
-          manifest-path: ./Cargo.toml
-          command: check all
