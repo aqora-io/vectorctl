@@ -26,4 +26,5 @@ jobs:
       - run: cargo test
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
+          rust-version: "1.89.0"
           command: check all
