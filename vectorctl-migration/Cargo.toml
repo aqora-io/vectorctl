@@ -1,6 +1,6 @@
 [package]
 name = "vectorctl-migration"
-version = { workspace = true }
+version = "0.1.0"
 license-file = { workspace = true }
 edition = "2024"
 
@@ -9,8 +9,8 @@ name = "vectorctl_migration"
 path = "src/lib.rs"
 
 [dependencies]
-vectorctl-cli = { path = "../vectorctl-cli" }
-vectorctl-backend = { path = "../vectorctl-backend" }
+vectorctl-cli = { path = "../vectorctl-cli" , version = "0.1.0" }
+vectorctl-backend = { path = "../vectorctl-backend" , version = "0.1.0" }
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 qdrant-client = { version = "1.16", features = ["serde"], optional = true }
