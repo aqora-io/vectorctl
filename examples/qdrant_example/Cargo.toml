@@ -7,7 +7,7 @@ publish = false
 [dependencies]
 async-trait = "0.1"
 tokio = "1.45.0"
-qdrant-client = "1.14.0"
+qdrant-client = "1.16"
 anyhow = "1"
 
 [dependencies.vectorctl]

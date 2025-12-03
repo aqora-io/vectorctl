@@ -16,7 +16,7 @@ tokio-stream = { version = "0.1.1", features = ["fs"] }
 thiserror = "2.0"
 clap = { version = "4.5", features = ["derive", "env"] }
 url = { version = "2.5", features = ["serde"] }
-qdrant-client = "1.14"
+qdrant-client = "1.16"
 base64 = "0.22"
 rand = { version = "0.9", features = ["os_rng"] }
 
