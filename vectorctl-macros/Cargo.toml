@@ -1,8 +1,8 @@
 [package]
 name = "vectorctl-macros"
-version = "0.1.0"
+version = { workspace = true }
+license-file = { workspace = true }
 edition = "2024"
-license-file = "../LICENSE"
 
 [dependencies]
 lazy-regex = { version = "3.4.1", features = ["perf"] }

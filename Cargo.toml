@@ -1,9 +1,9 @@
 [package]
 name = "vectorctl"
-version = "0.1.0"
+version = { workspace = true }
+license-file = { workspace = true }
 edition = "2024"
 publish = false
-license-file = "LICENSE"
 
 [workspace]
 
@@ -39,3 +39,7 @@ sea-backend = ["vectorctl-migration/sea-backend"]
 cli = ["dep:vectorctl-cli"]
 macros = ["dep:vectorctl-macros"]
 migration = ["dep:vectorctl-migration"]
+
+[workspace.package]
+version = "0.1.0"
+license-file = "LICENSE"
