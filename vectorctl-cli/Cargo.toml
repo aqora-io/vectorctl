@@ -1,11 +1,11 @@
 [package]
 name = "vectorctl-cli"
-version = { workspace = true }
+version = "0.1.0"
 license-file = { workspace = true }
 edition = "2024"
 
 [dependencies]
-vectorctl-template = { path = "../vectorctl-template" }
+vectorctl-template = { path = "../vectorctl-template" , version = "0.1.0" }
 syn = { version = "2", default-features = false, features = [
   "full",
   "parsing",
