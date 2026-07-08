@@ -227,35 +227,45 @@ where
 
     let use_colors = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
 
-    let ids = futures::future::try_join_all(iterator.map(|(id_opt, migration)| {
+    apply_down(ctx, &ledger, use_colors, iterator).await
+}
+
+// Roll migrations back sequentially in the order `iterator` yields, removing each
+// from the ledger IMMEDIATELY after it succeeds. A mid-run failure therefore leaves
+// durable partial progress and the next run resumes rather than replaying.
+async fn apply_down<'a, L, I>(
+    ctx: &crate::context::Context,
+    ledger: &L,
+    use_colors: bool,
+    iterator: I,
+) -> Result<(), MigrationError>
+where
+    L: LedgerTrait<Key = String, Value = Uuid>,
+    I: Iterator<Item = (Option<Uuid>, &'a dyn MigrationTrait)> + Send,
+{
+    for (id_opt, migration) in iterator {
         let name = migration.name();
-        async move {
-            let message = format!("Running down: {}", name);
-            if use_colors {
-                println!("{}", message.yellow().bold());
-            } else {
-                println!("{message}");
-            }
 
-            let id = id_opt.ok_or_else(|| {
-                MigrationError::Graph(RevisionGraphError::NotFound(format!("{:?}", name)))
-            })?;
-
-            migration.down(ctx).await.map(|_| {
-                let message = format!("Rolled back: {}", name);
-                if use_colors {
-                    println!("{}", message.green().bold());
-                } else {
-                    println!("{message}");
-                }
-                id
-            })
+        let message = format!("Running down: {}", name);
+        if use_colors {
+            println!("{}", message.yellow().bold());
+        } else {
+            println!("{message}");
         }
-    }))
-    .await?;
 
-    if !ids.is_empty() {
-        ledger.delete_many(ids).await?;
+        let id = id_opt.ok_or_else(|| {
+            MigrationError::Graph(RevisionGraphError::NotFound(format!("{:?}", name)))
+        })?;
+
+        migration.down(ctx).await?;
+
+        let message = format!("Rolled back: {}", name);
+        ledger.delete_many(vec![id]).await?;
+        if use_colors {
+            println!("{}", message.green().bold());
+        } else {
+            println!("{message}");
+        }
     }
 
     Ok(())
@@ -270,32 +280,232 @@ where
 
     let use_colors = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
 
-    let ids = futures::future::try_join_all(iterator.map(|(_, migration)| {
+    apply_up(ctx, &ledger, use_colors, iterator).await
+}
+
+// Apply migrations sequentially in the DAG order `iterator` yields, recording each
+// in the ledger IMMEDIATELY after it succeeds. A mid-run failure therefore leaves
+// durable partial progress and the next run resumes at the failed migration.
+async fn apply_up<'a, L, I>(
+    ctx: &crate::context::Context,
+    ledger: &L,
+    use_colors: bool,
+    iterator: I,
+) -> Result<(), MigrationError>
+where
+    L: LedgerTrait<Key = String, Value = Uuid>,
+    I: Iterator<Item = (Option<Uuid>, &'a dyn MigrationTrait)> + Send,
+{
+    for (_, migration) in iterator {
         let name = migration.name();
-        async move {
-            let message = format!("Applying: {}", name);
-            if use_colors {
-                println!("{}", message.yellow().bold());
-            } else {
-                println!("{message}");
-            }
 
-            migration.up(ctx).await.map(|_| {
-                let message = format!("Applied: {}", name);
-                if use_colors {
-                    println!("{}", message.green().bold());
-                } else {
-                    println!("{message}");
-                }
-                name
-            })
+        let message = format!("Applying: {}", name);
+        if use_colors {
+            println!("{}", message.yellow().bold());
+        } else {
+            println!("{message}");
         }
-    }))
-    .await?;
 
-    if !ids.is_empty() {
-        ledger.insert_many(ids).await?;
+        migration.up(ctx).await?;
+
+        let message = format!("Applied: {}", name);
+        ledger.insert_many(vec![name]).await?;
+        if use_colors {
+            println!("{}", message.green().bold());
+        } else {
+            println!("{message}");
+        }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MigrationMeta, Revision as RevisionMeta};
+    use std::sync::{Arc, Mutex};
+    use vectorctl_backend::generic::VectorBackendError;
+
+    #[derive(Default)]
+    struct MockLedger {
+        inserted: Mutex<Vec<String>>,
+        deleted: Mutex<Vec<Uuid>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LedgerTrait for MockLedger {
+        type Key = String;
+        type Value = Uuid;
+
+        fn collection_name(&self) -> String {
+            "_mock".into()
+        }
+
+        async fn ensure(&self) -> Result<(), VectorBackendError> {
+            Ok(())
+        }
+
+        async fn retrieve(&self) -> Result<HashMap<Self::Key, Self::Value>, VectorBackendError> {
+            Ok(HashMap::new())
+        }
+
+        async fn insert_many(&self, ids: Vec<Self::Key>) -> Result<(), VectorBackendError> {
+            self.inserted.lock().unwrap().extend(ids);
+            Ok(())
+        }
+
+        async fn delete_many(&self, ids: Vec<Self::Value>) -> Result<(), VectorBackendError> {
+            self.deleted.lock().unwrap().extend(ids);
+            Ok(())
+        }
+    }
+
+    #[derive(Debug)]
+    struct MockMigration {
+        name: &'static str,
+        fail: bool,
+        calls: Arc<Mutex<Vec<String>>>,
+    }
+
+    // Record each up/down invocation into a shared log so tests can assert the exact
+    // call sequence, not just the resulting ledger state.
+    fn mock(name: &'static str, fail: bool, calls: &Arc<Mutex<Vec<String>>>) -> MockMigration {
+        MockMigration {
+            name,
+            fail,
+            calls: Arc::clone(calls),
+        }
+    }
+
+    impl MigrationMeta for MockMigration {
+        fn name(&self) -> String {
+            self.name.to_string()
+        }
+
+        fn revision(&self) -> RevisionMeta<'_> {
+            RevisionMeta {
+                message: None,
+                revision: self.name,
+                down_revision: None,
+                date: "2023-01-01",
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MigrationTrait for MockMigration {
+        async fn up(&self, _ctx: &crate::context::Context) -> Result<(), MigrationError> {
+            self.calls.lock().unwrap().push(format!("up:{}", self.name));
+            if self.fail {
+                Err(MigrationError::Other(self.name.into()))
+            } else {
+                Ok(())
+            }
+        }
+
+        async fn down(&self, _ctx: &crate::context::Context) -> Result<(), MigrationError> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("down:{}", self.name));
+            if self.fail {
+                Err(MigrationError::Other(self.name.into()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    // Build a Context offline without touching the network: `Qdrant::from_url(..).build()`
+    // otherwise runs an eager, blocking ~5s compatibility health check, so skip it. The mock
+    // ledger and mock migrations never use this client, so no RPC is ever issued.
+    fn test_ctx() -> crate::context::Context {
+        let client = qdrant_client::Qdrant::from_url("http://localhost:6334")
+            .skip_compatibility_check()
+            .build()
+            .unwrap();
+        crate::context::Context::new(vectorctl_backend::Qdrant::new_with_client(Arc::new(client)))
+    }
+
+    #[test]
+    fn apply_up_records_sequentially_in_order() {
+        let ctx = test_ctx();
+        let ledger = MockLedger::default();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let migrations = [
+            mock("a", false, &calls),
+            mock("b", false, &calls),
+            mock("c", false, &calls),
+        ];
+        let iter = migrations.iter().map(|m| (None, m as &dyn MigrationTrait));
+
+        let result = futures::executor::block_on(apply_up(&ctx, &ledger, false, iter));
+
+        assert!(result.is_ok());
+        assert_eq!(*calls.lock().unwrap(), vec!["up:a", "up:b", "up:c"]);
+        assert_eq!(*ledger.inserted.lock().unwrap(), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn apply_up_stops_and_persists_prefix_on_failure() {
+        let ctx = test_ctx();
+        let ledger = MockLedger::default();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let migrations = [
+            mock("a", false, &calls),
+            mock("b", false, &calls),
+            mock("c", true, &calls),
+            mock("d", false, &calls),
+        ];
+        let iter = migrations.iter().map(|m| (None, m as &dyn MigrationTrait));
+
+        let result = futures::executor::block_on(apply_up(&ctx, &ledger, false, iter));
+
+        assert!(result.is_err());
+        // Ran up through the failing "c" in order and never invoked "d".
+        assert_eq!(*calls.lock().unwrap(), vec!["up:a", "up:b", "up:c"]);
+        // Prefix persisted; the run stopped at the failure so "d" never ran.
+        assert_eq!(*ledger.inserted.lock().unwrap(), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn apply_down_stops_and_persists_prefix_on_failure() {
+        let ctx = test_ctx();
+        let ledger = MockLedger::default();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let id_a = Uuid::now_v7();
+        let id_b = Uuid::now_v7();
+        let id_c = Uuid::now_v7();
+        let migrations = [
+            mock("a", false, &calls),
+            mock("b", false, &calls),
+            mock("c", true, &calls),
+        ];
+        let ids = [Some(id_a), Some(id_b), Some(id_c)];
+        let iter = migrations
+            .iter()
+            .zip(ids)
+            .map(|(m, id)| (id, m as &dyn MigrationTrait));
+
+        let result = futures::executor::block_on(apply_down(&ctx, &ledger, false, iter));
+
+        assert!(result.is_err());
+        assert_eq!(*calls.lock().unwrap(), vec!["down:a", "down:b", "down:c"]);
+        assert_eq!(*ledger.deleted.lock().unwrap(), vec![id_a, id_b]);
+    }
+
+    #[test]
+    fn apply_down_missing_id_errors() {
+        let ctx = test_ctx();
+        let ledger = MockLedger::default();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let migrations = [mock("a", false, &calls)];
+        let iter = migrations.iter().map(|m| (None, m as &dyn MigrationTrait));
+
+        let result = futures::executor::block_on(apply_down(&ctx, &ledger, false, iter));
+
+        assert!(matches!(result, Err(MigrationError::Graph(_))));
+        assert!(ledger.deleted.lock().unwrap().is_empty());
+    }
 }
