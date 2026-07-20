@@ -1680,7 +1680,7 @@ dependencies = [
 
 [[package]]
 name = "qdrant_exemple"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2886,7 +2886,7 @@ dependencies = [
 
 [[package]]
 name = "vectorctl"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "vectorctl-backend",
  "vectorctl-cli",
@@ -2896,7 +2896,7 @@ dependencies = [
 
 [[package]]
 name = "vectorctl-backend"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2909,7 +2909,7 @@ dependencies = [
 
 [[package]]
 name = "vectorctl-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "chrono",
@@ -2929,7 +2929,7 @@ dependencies = [
 
 [[package]]
 name = "vectorctl-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "lazy-regex",
  "proc-macro2",
@@ -2939,7 +2939,7 @@ dependencies = [
 
 [[package]]
 name = "vectorctl-migration"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2962,7 +2962,7 @@ dependencies = [
 
 [[package]]
 name = "vectorctl-template"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "derive_builder",
  "handlebars",
