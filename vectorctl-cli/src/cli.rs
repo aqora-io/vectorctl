@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -55,7 +56,18 @@ pub struct Cli {
     pub command: Commands,
 }
 
+fn init_tracing() {
+    let ansi = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+    tracing_subscriber::fmt()
+        .with_ansi(ansi)
+        .with_target(false)
+        .without_time()
+        .init();
+}
+
 pub async fn main() -> Result<(), CliError> {
+    init_tracing();
+
     let cli = Cli::parse();
 
     match cli.command {

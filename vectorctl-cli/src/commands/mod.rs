@@ -128,7 +128,7 @@ pub async fn run_migrate_command(
             }
             args.extend(extra_args);
 
-            println!("> cargo {}", args.join(" "));
+            tracing::info!("> cargo {}", args.join(" "));
             let status = process::Command::new("cargo")
                 .args(&args)
                 .status()

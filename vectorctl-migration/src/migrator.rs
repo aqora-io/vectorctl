@@ -3,9 +3,9 @@ use crate::{
     revision::{Node, RevisionGraph, RevisionGraphError},
 };
 use once_cell::sync::OnceCell;
-use owo_colors::OwoColorize;
-use std::{collections::HashMap, io::IsTerminal};
+use std::collections::HashMap;
 use thiserror::Error;
+use tracing::info;
 use uuid::Uuid;
 use vectorctl_backend::generic::{LedgerTrait, VectorTrait};
 
@@ -97,52 +97,14 @@ pub trait MigratorTrait: Send {
 
         let graph = Self::build_graph(&ledger.retrieve().await?)?;
 
-        let use_colors = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+        for Node { migration, .. } in graph.forward_path(Some(graph.head()), graph.queue()) {
+            let name = migration.runner.name();
 
-        graph
-            .forward_path(Some(graph.head()), graph.queue())
-            .into_iter()
-            .for_each(|Node { migration, .. }| {
-                let status_str = match migration.status {
-                    MigrationStatus::Applied => {
-                        let text = "Applied";
-                        if use_colors {
-                            text.green().bold().to_string()
-                        } else {
-                            text.to_string()
-                        }
-                    }
-                    MigrationStatus::Pending => {
-                        let text = "Pending";
-                        if use_colors {
-                            text.yellow().bold().to_string()
-                        } else {
-                            text.to_string()
-                        }
-                    }
-                };
-
-                let message = migration
-                    .runner
-                    .revision()
-                    .message
-                    .map(|message| {
-                        if use_colors {
-                            format!(" — {}", message.dimmed().italic())
-                        } else {
-                            format!(" — {}", message)
-                        }
-                    })
-                    .unwrap_or_default();
-
-                let name = if use_colors {
-                    migration.runner.name().blue().bold().to_string()
-                } else {
-                    migration.runner.name().to_string()
-                };
-
-                println!("{:<20} | {}{}", name, status_str, message);
-            });
+            match migration.runner.revision().message {
+                Some(message) => info!(name, status = %migration.status, message),
+                None => info!(name, status = %migration.status),
+            }
+        }
 
         Ok(())
     }
@@ -224,19 +186,16 @@ where
 {
     let ledger = ctx.backend.ledger();
     ledger.ensure().await?;
-
-    let use_colors = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
-
-    apply_down(ctx, &ledger, use_colors, iterator).await
+    apply_down(ctx, &ledger, iterator).await
 }
 
 // Roll migrations back sequentially in the order `iterator` yields, removing each
 // from the ledger IMMEDIATELY after it succeeds. A mid-run failure therefore leaves
 // durable partial progress and the next run resumes rather than replaying.
+#[tracing::instrument(skip_all)]
 async fn apply_down<'a, L, I>(
     ctx: &crate::context::Context,
     ledger: &L,
-    use_colors: bool,
     iterator: I,
 ) -> Result<(), MigrationError>
 where
@@ -246,12 +205,7 @@ where
     for (id_opt, migration) in iterator {
         let name = migration.name();
 
-        let message = format!("Running down: {}", name);
-        if use_colors {
-            println!("{}", message.yellow().bold());
-        } else {
-            println!("{message}");
-        }
+        info!(name, message = "Running down");
 
         let id = id_opt.ok_or_else(|| {
             MigrationError::Graph(RevisionGraphError::NotFound(format!("{:?}", name)))
@@ -259,13 +213,8 @@ where
 
         migration.down(ctx).await?;
 
-        let message = format!("Rolled back: {}", name);
         ledger.delete_many(vec![id]).await?;
-        if use_colors {
-            println!("{}", message.green().bold());
-        } else {
-            println!("{message}");
-        }
+        info!(name, message = "Rolled back");
     }
 
     Ok(())
@@ -277,19 +226,16 @@ where
 {
     let ledger = ctx.backend.ledger();
     ledger.ensure().await?;
-
-    let use_colors = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
-
-    apply_up(ctx, &ledger, use_colors, iterator).await
+    apply_up(ctx, &ledger, iterator).await
 }
 
 // Apply migrations sequentially in the DAG order `iterator` yields, recording each
 // in the ledger IMMEDIATELY after it succeeds. A mid-run failure therefore leaves
 // durable partial progress and the next run resumes at the failed migration.
+#[tracing::instrument(skip_all)]
 async fn apply_up<'a, L, I>(
     ctx: &crate::context::Context,
     ledger: &L,
-    use_colors: bool,
     iterator: I,
 ) -> Result<(), MigrationError>
 where
@@ -298,23 +244,10 @@ where
 {
     for (_, migration) in iterator {
         let name = migration.name();
-
-        let message = format!("Applying: {}", name);
-        if use_colors {
-            println!("{}", message.yellow().bold());
-        } else {
-            println!("{message}");
-        }
-
+        info!(name, message = "Applying");
         migration.up(ctx).await?;
-
-        let message = format!("Applied: {}", name);
-        ledger.insert_many(vec![name]).await?;
-        if use_colors {
-            println!("{}", message.green().bold());
-        } else {
-            println!("{message}");
-        }
+        ledger.insert_many(vec![name.clone()]).await?;
+        info!(name, message = "Applied");
     }
 
     Ok(())
@@ -440,7 +373,7 @@ mod tests {
         ];
         let iter = migrations.iter().map(|m| (None, m as &dyn MigrationTrait));
 
-        let result = futures::executor::block_on(apply_up(&ctx, &ledger, false, iter));
+        let result = futures::executor::block_on(apply_up(&ctx, &ledger, iter));
 
         assert!(result.is_ok());
         assert_eq!(*calls.lock().unwrap(), vec!["up:a", "up:b", "up:c"]);
@@ -460,7 +393,7 @@ mod tests {
         ];
         let iter = migrations.iter().map(|m| (None, m as &dyn MigrationTrait));
 
-        let result = futures::executor::block_on(apply_up(&ctx, &ledger, false, iter));
+        let result = futures::executor::block_on(apply_up(&ctx, &ledger, iter));
 
         assert!(result.is_err());
         // Ran up through the failing "c" in order and never invoked "d".
@@ -488,7 +421,7 @@ mod tests {
             .zip(ids)
             .map(|(m, id)| (id, m as &dyn MigrationTrait));
 
-        let result = futures::executor::block_on(apply_down(&ctx, &ledger, false, iter));
+        let result = futures::executor::block_on(apply_down(&ctx, &ledger, iter));
 
         assert!(result.is_err());
         assert_eq!(*calls.lock().unwrap(), vec!["down:a", "down:b", "down:c"]);
@@ -503,7 +436,7 @@ mod tests {
         let migrations = [mock("a", false, &calls)];
         let iter = migrations.iter().map(|m| (None, m as &dyn MigrationTrait));
 
-        let result = futures::executor::block_on(apply_down(&ctx, &ledger, false, iter));
+        let result = futures::executor::block_on(apply_down(&ctx, &ledger, iter));
 
         assert!(matches!(result, Err(MigrationError::Graph(_))));
         assert!(ledger.deleted.lock().unwrap().is_empty());

@@ -19,6 +19,8 @@ url = { version = "2.5", features = ["serde"] }
 qdrant-client = "1.16"
 base64 = "0.22"
 rand = { version = "0.9", features = ["os_rng"] }
+tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
+tracing = "0.1.44"
 
 [lib]
 name = "vectorctl_cli"
