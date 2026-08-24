@@ -1,6 +1,6 @@
 [package]
 name = "vectorctl"
-version = "0.2.0"
+version = "0.2.1"
 license-file = { workspace = true }
 edition = "2024"
 publish = false
@@ -21,10 +21,10 @@ default-members = ["vectorctl-macros", "vectorctl-template", "."]
 
 
 [dependencies]
-vectorctl-backend = { path = "vectorctl-backend", optional = true, default-features = false, version = "0.2.0" }
-vectorctl-cli = { path = "vectorctl-cli", optional = true, default-features = false, version = "0.2.0" }
-vectorctl-macros = { path = "vectorctl-macros", optional = true, version = "0.2.0" }
-vectorctl-migration = { path = "vectorctl-migration", optional = true, default-features = false, version = "0.2.0" }
+vectorctl-backend = { path = "vectorctl-backend", optional = true, default-features = false, version = "0.2.1" }
+vectorctl-cli = { path = "vectorctl-cli", optional = true, default-features = false, version = "0.2.1" }
+vectorctl-macros = { path = "vectorctl-macros", optional = true, version = "0.2.1" }
+vectorctl-migration = { path = "vectorctl-migration", optional = true, default-features = false, version = "0.2.1" }
 
 [features]
 default = []
