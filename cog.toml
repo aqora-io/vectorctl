@@ -18,12 +18,6 @@ set -e
 cog verify --file $1
 """
 
-[commit_types]
-
 [changelog]
 path = "CHANGELOG.md"
 authors = []
-
-[bump_profiles]
-
-[packages]
