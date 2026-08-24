@@ -11,13 +11,12 @@ jobs:
   check-msrv:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
-      - name: Set Rust caching env vars
-        run: |
-          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
-          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        uses: mozilla-actions/sccache-action@v0.0.11
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: "sccache"
       - run: rustup component add rustfmt clippy
       - name: check
         run: |
