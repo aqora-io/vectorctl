@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.2.0 - 2026-08-24
+#### Features
+- replace print by tracing - (ed8a363) - Angel Dijoux
+#### Miscellaneous Chores
+- update cog toml - (a1ccbb7) - Angel Dijoux
+- lint - (b18a748) - Angel Dijoux
+- bump rust toolchain - (b548059) - Angel Dijoux
+
+- - -
+
 ## v0.1.1 - 2026-07-20
 #### Features
 - prettify stdout - (c7e02cf) - Angel-Dijoux
