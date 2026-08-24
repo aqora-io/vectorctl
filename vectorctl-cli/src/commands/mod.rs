@@ -1,5 +1,5 @@
 mod migrate;
-use clap::{Subcommand, command};
+use clap::Subcommand;
 use std::{
     path::PathBuf,
     process::{self},
