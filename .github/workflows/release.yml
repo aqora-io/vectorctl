@@ -1,0 +1,28 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  create_release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: SemVer release
+        id: release
+        uses: cocogitto/cocogitto-action@main
+        with:
+          command: changelog
+          args: --at ${{ github.ref_name }}
+
+      - name: Upload github release
+        uses: softprops/action-gh-release@v3
+        with:
+          body: ${{ steps.release.outputs.stdout }}
+          tag_name: ${{ github.ref_name }}
