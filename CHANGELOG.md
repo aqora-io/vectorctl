@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.2.2 - 2026-11-03
+#### Bug Fixes
+- (**qdrant**) read every ledger point, not just the first scroll page - (54fd35f) - Julian Popescu
+#### Documentation
+- add a small README.md - (634399e) - Angel Dijoux
+
+- - -
+
 ## v0.2.0 - 2026-08-24
 #### Features
 - replace print by tracing - (ed8a363) - Angel Dijoux
